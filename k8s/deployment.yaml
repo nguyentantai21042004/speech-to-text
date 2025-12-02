@@ -126,12 +126,12 @@ spec:
           timeoutSeconds: 5
           failureThreshold: 12  # 120s total startup time
         
-        # Volume Mounts
+        # Volume Mounts (new location: models/ directory)
         volumeMounts:
         - name: logs
           mountPath: /app/logs
         - name: whisper-models
-          mountPath: /app/whisper_small_xeon
+          mountPath: /app/models/whisper_small_xeon
         - name: tmp
           mountPath: /tmp
         

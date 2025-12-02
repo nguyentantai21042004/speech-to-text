@@ -33,4 +33,5 @@ data:
   WHISPER_LANGUAGE: "vi"
   
   # Artifacts directory (where model files are stored)
-  WHISPER_ARTIFACTS_DIR: "/app"
+  # New location: models/ (artifacts in models/whisper_base_xeon/, etc.)
+  WHISPER_ARTIFACTS_DIR: "/app/models"

@@ -37,8 +37,12 @@ BUCKET_NAME = "whisper-artifacts"
 def download_artifacts(model_size="small"):
     """Download Whisper artifacts for specified model size"""
 
-    # Create output directory
-    output_dir = Path(f"whisper_{model_size}_xeon")
+    # Create models directory and output subdirectory
+    # Default: models/whisper_{size}_xeon/ (matches WHISPER_ARTIFACTS_DIR=models)
+    models_dir = Path("models")
+    models_dir.mkdir(exist_ok=True)
+
+    output_dir = models_dir / f"whisper_{model_size}_xeon"
     output_dir.mkdir(exist_ok=True)
 
     print(f"📦 Downloading Whisper {model_size.upper()} artifacts...")

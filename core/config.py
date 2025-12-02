@@ -38,7 +38,9 @@ class Settings(BaseSettings):
 
     # Whisper Library Settings (for direct C library integration)
     whisper_model_size: str = Field(default="base", alias="WHISPER_MODEL_SIZE")
-    whisper_artifacts_dir: str = Field(default=".", alias="WHISPER_ARTIFACTS_DIR")
+    # Model directory: default "models" (artifacts in models/whisper_base_xeon/, etc.)
+    # For backward compatibility, set to "." to use project root
+    whisper_artifacts_dir: str = Field(default="models", alias="WHISPER_ARTIFACTS_DIR")
     whisper_language: str = Field(default="vi", alias="WHISPER_LANGUAGE")
     whisper_model: str = Field(default="base", alias="WHISPER_MODEL")
     whisper_n_threads: int = Field(
@@ -58,7 +60,7 @@ class Settings(BaseSettings):
     def validate_chunk_overlap(self) -> bool:
         """
         Task 4.1.2: Validate overlap must be < chunk_duration/2.
-        
+
         Returns:
             True if valid, raises ValueError if invalid
         """

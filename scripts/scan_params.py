@@ -2,9 +2,24 @@
 """Scan whisper params structure to find VAD-related fields."""
 
 import ctypes
+import os
 import struct
+import sys
+from pathlib import Path
 
-lib_dir = "/app/whisper_base_xeon"
+# Add parent directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+try:
+    from core.config import get_settings
+    settings = get_settings()
+    artifacts_dir = settings.whisper_artifacts_dir
+    model_size = settings.whisper_model_size
+except ImportError:
+    artifacts_dir = os.getenv("WHISPER_ARTIFACTS_DIR", "models")
+    model_size = os.getenv("WHISPER_MODEL_SIZE", "base")
+
+lib_dir = f"{artifacts_dir}/whisper_{model_size}_xeon"
 
 # Load libraries
 ctypes.CDLL(f"{lib_dir}/libggml-base.so.0", mode=ctypes.RTLD_GLOBAL)

@@ -76,18 +76,18 @@ spec:
         cpu: "1"        # Same as requests for QoS Guaranteed
         memory: "2Gi"   # Same as requests for QoS Guaranteed
     
-    # Volume mounts
+    # Volume mounts (new location: models/ directory)
     volumeMounts:
     - name: benchmark-results
       mountPath: /app/scripts/benchmark_results
     - name: whisper-models
-      mountPath: /app/whisper_base_xeon
+      mountPath: /app/models/whisper_base_xeon
       subPath: whisper_base_xeon
     - name: whisper-models
-      mountPath: /app/whisper_small_xeon
+      mountPath: /app/models/whisper_small_xeon
       subPath: whisper_small_xeon
     - name: whisper-models
-      mountPath: /app/whisper_medium_xeon
+      mountPath: /app/models/whisper_medium_xeon
       subPath: whisper_medium_xeon
     
     # Security Context
@@ -164,15 +164,16 @@ spec:
         cpu: "1"
         memory: "2Gi"
     
+    # Volume mounts (new location: models/ directory)
     volumeMounts:
     - name: whisper-models
-      mountPath: /app/whisper_base_xeon
+      mountPath: /app/models/whisper_base_xeon
       subPath: whisper_base_xeon
     - name: whisper-models
-      mountPath: /app/whisper_small_xeon
+      mountPath: /app/models/whisper_small_xeon
       subPath: whisper_small_xeon
     - name: whisper-models
-      mountPath: /app/whisper_medium_xeon
+      mountPath: /app/models/whisper_medium_xeon
       subPath: whisper_medium_xeon
     
     securityContext:

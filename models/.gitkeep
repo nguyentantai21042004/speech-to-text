@@ -1,0 +1,5 @@
+# This file ensures the models directory is tracked by git.
+# Whisper model artifacts will be downloaded here:
+# - models/whisper_base_xeon/
+# - models/whisper_small_xeon/
+# - models/whisper_medium_xeon/

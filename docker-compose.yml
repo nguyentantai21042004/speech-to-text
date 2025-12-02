@@ -36,7 +36,8 @@ services:
 
       # Whisper Library Settings (Dynamic Model Loading)
       WHISPER_MODEL_SIZE: ${WHISPER_MODEL_SIZE:-base}  # Options: base (default), small, medium
-      WHISPER_ARTIFACTS_DIR: ${WHISPER_ARTIFACTS_DIR:-.}
+      # Model directory: models/ (artifacts in models/whisper_base_xeon/, etc.)
+      WHISPER_ARTIFACTS_DIR: ${WHISPER_ARTIFACTS_DIR:-models}
 
       # MinIO Configuration (for artifact download)
       MINIO_ENDPOINT: ${MINIO_ENDPOINT:-http://172.16.19.115:9000}
@@ -62,9 +63,10 @@ services:
       - ./logs:/app/logs
       - whisper_models:/app/whisper/models
       # Cache downloaded Whisper library artifacts between restarts
-      - whisper_library_base:/app/whisper_base_xeon
-      - whisper_library_small:/app/whisper_small_xeon
-      - whisper_library_medium:/app/whisper_medium_xeon
+      # New location: models/ directory (matches WHISPER_ARTIFACTS_DIR=models)
+      - whisper_library_base:/app/models/whisper_base_xeon
+      - whisper_library_small:/app/models/whisper_small_xeon
+      - whisper_library_medium:/app/models/whisper_medium_xeon
     networks:
       - stt-network
     healthcheck:

@@ -17,8 +17,10 @@ services:
     volumes:
       - .:/app
       - whisper_models:/app/whisper/models
-      - whisper_library_small:/app/whisper_small_xeon
-      - whisper_library_medium:/app/whisper_medium_xeon
+      # Cache downloaded Whisper library artifacts (new location: models/)
+      - whisper_library_base:/app/models/whisper_base_xeon
+      - whisper_library_small:/app/models/whisper_small_xeon
+      - whisper_library_medium:/app/models/whisper_medium_xeon
       # Cache pip packages
       - pip_cache:/root/.cache/pip
     
@@ -41,10 +43,11 @@ services:
 
       # Whisper Library Settings (base = default, balanced performance)
       WHISPER_MODEL_SIZE: "${WHISPER_MODEL_SIZE:-base}"
-      WHISPER_ARTIFACTS_DIR: "."
+      # Model directory: models/ (artifacts in models/whisper_base_xeon/, etc.)
+      WHISPER_ARTIFACTS_DIR: "models"
       
-      # Library path for Whisper shared libraries
-      LD_LIBRARY_PATH: "/app/whisper_base_xeon:/app/whisper_small_xeon:/app/whisper_medium_xeon"
+      # Library path for Whisper shared libraries (new location: models/)
+      LD_LIBRARY_PATH: "/app/models/whisper_base_xeon:/app/models/whisper_small_xeon:/app/models/whisper_medium_xeon"
       
       # MinIO Configuration
       MINIO_ENDPOINT: "${MINIO_ENDPOINT:-http://172.16.19.115:9000}"

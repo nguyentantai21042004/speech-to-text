@@ -85,16 +85,6 @@ tmp/
 temp/
 /tmp/
 
-# Whisper Models (Downloaded from MinIO at runtime)
-# IMPORTANT: Do NOT copy whisper models into Docker image
-# Models will be downloaded from MinIO private storage at runtime
-whisper/models/*
-whisper/models/*.bin
-whisper/models/*.pt
-whisper/models/*.onnx
-whisper/models/*.json
-whisper/models/.model_cache.json
-
 # Keep whisper/bin/ and scripts (executables needed)
 # Keep whisper/models/.gitkeep (to maintain directory structure)
 
