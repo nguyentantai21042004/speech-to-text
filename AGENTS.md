@@ -2,7 +2,7 @@
 # OpenSpec Instructions
 
 These instructions are for AI assistants working in this project.
-
+zl
 Always open `@/openspec/AGENTS.md` when the request:
 - Mentions planning or proposals (words like proposal, spec, change, plan)
 - Introduces new capabilities, breaking changes, architecture shifts, or big performance/security work
