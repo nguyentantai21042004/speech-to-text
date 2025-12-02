@@ -7,8 +7,9 @@ import pytest
 from unittest.mock import Mock, patch, MagicMock
 from pathlib import Path
 
-from adapters.whisper.library_adapter import (
+from infrastructure.whisper.library_adapter import (
     WhisperLibraryAdapter,
+    WhisperLibraryError,
     LibraryLoadError,
     ModelInitError,
     MODEL_CONFIGS,
@@ -26,68 +27,63 @@ class TestWhisperLibraryAdapter:
         assert MODEL_CONFIGS["small"]["model"] == "ggml-small-q5_1.bin"
         assert MODEL_CONFIGS["medium"]["model"] == "ggml-medium-q5_1.bin"
 
-    @patch("adapters.whisper.library_adapter.get_settings")
+    @patch("infrastructure.whisper.library_adapter.get_settings")
     def test_init_validates_model_size(self, mock_settings):
         """Test that initialization validates model size"""
         mock_settings.return_value = MagicMock(
-            whisper_model_size="small",
-            whisper_artifacts_dir="."
+            whisper_model_size="small", whisper_artifacts_dir="."
         )
 
         # Valid model size should not raise
-        with patch.object(WhisperLibraryAdapter, '_load_libraries'):
-            with patch.object(WhisperLibraryAdapter, '_initialize_context'):
+        with patch.object(WhisperLibraryAdapter, "_load_libraries"):
+            with patch.object(WhisperLibraryAdapter, "_initialize_context"):
                 adapter = WhisperLibraryAdapter(model_size="small")
                 assert adapter.model_size == "small"
 
-    @patch("adapters.whisper.library_adapter.get_settings")
+    @patch("infrastructure.whisper.library_adapter.get_settings")
     def test_init_invalid_model_size(self, mock_settings):
         """Test that invalid model size raises ValueError"""
         mock_settings.return_value = MagicMock(
-            whisper_model_size="invalid",
-            whisper_artifacts_dir="."
+            whisper_model_size="invalid", whisper_artifacts_dir="."
         )
 
         with pytest.raises(ValueError, match="Unsupported model size"):
             WhisperLibraryAdapter(model_size="invalid")
 
-    @patch("adapters.whisper.library_adapter.get_settings")
-    @patch("adapters.whisper.library_adapter.ctypes.CDLL")
+    @patch("infrastructure.whisper.library_adapter.get_settings")
+    @patch("infrastructure.whisper.library_adapter.ctypes.CDLL")
     @patch("pathlib.Path.exists")
     def test_load_libraries_success(self, mock_exists, mock_cdll, mock_settings):
         """Test successful library loading"""
         mock_settings.return_value = MagicMock(
-            whisper_model_size="small",
-            whisper_artifacts_dir="."
+            whisper_model_size="small", whisper_artifacts_dir="."
         )
         mock_exists.return_value = True
         mock_cdll.return_value = MagicMock()
 
-        with patch.object(WhisperLibraryAdapter, '_initialize_context'):
+        with patch.object(WhisperLibraryAdapter, "_initialize_context"):
             adapter = WhisperLibraryAdapter(model_size="small")
             assert adapter.lib is not None
 
-    @patch("adapters.whisper.library_adapter.get_settings")
+    @patch("infrastructure.whisper.library_adapter.get_settings")
     @patch("pathlib.Path.exists")
     def test_load_libraries_missing_directory(self, mock_exists, mock_settings):
         """Test library loading fails when directory missing"""
         mock_settings.return_value = MagicMock(
-            whisper_model_size="small",
-            whisper_artifacts_dir="."
+            whisper_model_size="small", whisper_artifacts_dir="."
         )
         mock_exists.return_value = False
 
         with pytest.raises(LibraryLoadError, match="Library directory not found"):
             WhisperLibraryAdapter(model_size="small")
 
-    @patch("adapters.whisper.library_adapter.get_settings")
-    @patch("adapters.whisper.library_adapter.ctypes.CDLL")
+    @patch("infrastructure.whisper.library_adapter.get_settings")
+    @patch("infrastructure.whisper.library_adapter.ctypes.CDLL")
     @patch("pathlib.Path.exists")
     def test_initialize_context_success(self, mock_exists, mock_cdll, mock_settings):
         """Test successful context initialization"""
         mock_settings.return_value = MagicMock(
-            whisper_model_size="small",
-            whisper_artifacts_dir="."
+            whisper_model_size="small", whisper_artifacts_dir="."
         )
         mock_exists.return_value = True
 
@@ -99,14 +95,15 @@ class TestWhisperLibraryAdapter:
         adapter = WhisperLibraryAdapter(model_size="small")
         assert adapter.ctx == 12345
 
-    @patch("adapters.whisper.library_adapter.get_settings")
-    @patch("adapters.whisper.library_adapter.ctypes.CDLL")
+    @patch("infrastructure.whisper.library_adapter.get_settings")
+    @patch("infrastructure.whisper.library_adapter.ctypes.CDLL")
     @patch("pathlib.Path.exists")
-    def test_initialize_context_null_context(self, mock_exists, mock_cdll, mock_settings):
+    def test_initialize_context_null_context(
+        self, mock_exists, mock_cdll, mock_settings
+    ):
         """Test context initialization fails when context is NULL"""
         mock_settings.return_value = MagicMock(
-            whisper_model_size="small",
-            whisper_artifacts_dir="."
+            whisper_model_size="small", whisper_artifacts_dir="."
         )
         mock_exists.return_value = True
 
@@ -115,17 +112,18 @@ class TestWhisperLibraryAdapter:
         mock_lib.whisper_init_from_file.return_value = None
         mock_cdll.return_value = mock_lib
 
-        with pytest.raises(ModelInitError, match="whisper_init_from_file.*returned NULL"):
+        with pytest.raises(
+            ModelInitError, match="whisper_init_from_file.*returned NULL"
+        ):
             WhisperLibraryAdapter(model_size="small")
 
-    @patch("adapters.whisper.library_adapter.get_settings")
-    @patch("adapters.whisper.library_adapter.ctypes.CDLL")
+    @patch("infrastructure.whisper.library_adapter.get_settings")
+    @patch("infrastructure.whisper.library_adapter.ctypes.CDLL")
     @patch("pathlib.Path.exists")
     def test_transcribe_missing_audio_file(self, mock_exists, mock_cdll, mock_settings):
         """Test transcription fails when audio file missing"""
         mock_settings.return_value = MagicMock(
-            whisper_model_size="small",
-            whisper_artifacts_dir="."
+            whisper_model_size="small", whisper_artifacts_dir="."
         )
 
         def exists_side_effect(path=None):
@@ -143,12 +141,13 @@ class TestWhisperLibraryAdapter:
         adapter = WhisperLibraryAdapter(model_size="small")
 
         with patch("os.path.exists", return_value=False):
-            from adapters.whisper.library_adapter import TranscriptionError
+            from core.errors import TranscriptionError
+
             with pytest.raises(TranscriptionError, match="Audio file not found"):
                 adapter.transcribe("/nonexistent/audio.wav")
 
-    @patch("adapters.whisper.library_adapter._whisper_library_adapter", None)
-    @patch("adapters.whisper.library_adapter.WhisperLibraryAdapter")
+    @patch("infrastructure.whisper.library_adapter._whisper_library_adapter", None)
+    @patch("infrastructure.whisper.library_adapter.WhisperLibraryAdapter")
     def test_get_whisper_library_adapter_singleton(self, mock_adapter_class):
         """Test that get_whisper_library_adapter returns singleton"""
         mock_instance = MagicMock()

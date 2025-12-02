@@ -1,7 +1,10 @@
 """
-Whisper.cpp transcriber interface.
+Whisper.cpp transcriber interface (Legacy CLI wrapper).
 Includes detailed logging and comprehensive error handling.
 Auto-downloads models from MinIO if not present locally.
+
+Note: This is the legacy CLI-based implementation.
+Prefer WhisperLibraryAdapter for better performance.
 """
 
 import subprocess
@@ -16,13 +19,13 @@ from core.errors import (
     TimeoutError as STTTimeoutError,
     FileNotFoundError as STTFileNotFoundError,
 )
-from adapters.whisper.model_downloader import get_model_downloader
+from infrastructure.whisper.model_downloader import get_model_downloader
 
 settings = get_settings()
 
 
 class WhisperTranscriber:
-    """Interface to Whisper.cpp for audio transcription."""
+    """Interface to Whisper.cpp for audio transcription (CLI-based)."""
 
     def __init__(self):
         """Initialize Whisper transcriber."""
@@ -146,8 +149,6 @@ class WhisperTranscriber:
                 raise WhisperCrashError(error_msg)
 
             # Parse output
-            # When using --output-txt, Whisper writes to file instead of stdout
-            # Need to read from output file
             transcription = self._parse_output(result.stdout, result.stderr, audio_path)
 
             # If stdout is empty but process succeeded, check output file
@@ -200,47 +201,22 @@ class WhisperTranscriber:
         """
         Build Whisper.cpp command.
         Auto-downloads model from MinIO if not present locally.
-
-        Args:
-            audio_path: Path to audio file
-            language: Language code
-            model: Model name
-
-        Returns:
-            Command as list of strings
         """
         try:
             logger.debug(
                 f"Building Whisper command for model={model}, language={language}"
             )
 
-            # OPTIMIZATION: Cache model path to avoid repeated checks/downloads
-            # This is critical for parallel transcription where multiple chunks check the same model
             if model in self._model_path_cache:
                 model_path = self._model_path_cache[model]
-                # No log - already cached, silent success
             else:
-                # Lazy-load model downloader (singleton, shared across all chunks)
                 if self._model_downloader is None:
                     self._model_downloader = get_model_downloader()
 
-                # Check and cache model path (only first time, subsequent chunks use cache)
                 model_path = self._model_downloader.ensure_model_exists(model)
                 self._model_path_cache[model] = model_path
-                # Log only once when model is first checked/cached
                 logger.debug(f"Model '{model}' ensured and cached: {model_path}")
 
-            # Build command with optimized flags for quality and accuracy
-            # Anti-repetition flags:
-            # - --max-context 0: Disable context reuse between chunks (prevents repetition)
-            # Anti-hallucination flags:
-            # - --suppress-nst: Suppress non-speech tokens (removes [music], [noise], etc.)
-            # - --no-speech-thold: Higher threshold = less false positives (default 0.6, we use 0.7)
-            # - --entropy-thold: Higher threshold = less hallucination (default 2.4, we use 2.6)
-            # - --logprob-thold: Higher threshold = filter low-quality predictions (default -1.0, we use -0.8)
-            # Quality flags:
-            # - --no-fallback: Disable temperature fallback for consistent output
-            # - --suppress-regex: Optional regex to suppress specific tokens
             command = [
                 settings.whisper_executable,
                 "-m",
@@ -249,36 +225,25 @@ class WhisperTranscriber:
                 audio_path,
                 "-l",
                 language,
-                "--no-timestamps",  # No timestamps in output
+                "--no-timestamps",
                 "--max-context",
-                str(
-                    settings.whisper_max_context
-                ),  # Disable context reuse (anti-repetition)
-                "--suppress-nst",  # Suppress non-speech tokens (anti-hallucination)
+                str(settings.whisper_max_context),
+                "--suppress-nst",
                 "--no-speech-thold",
-                str(
-                    settings.whisper_no_speech_thold
-                ),  # Higher threshold for speech detection
+                str(settings.whisper_no_speech_thold),
                 "--entropy-thold",
-                str(
-                    settings.whisper_entropy_thold
-                ),  # Higher threshold (less hallucination)
+                str(settings.whisper_entropy_thold),
                 "--logprob-thold",
-                str(
-                    settings.whisper_logprob_thold
-                ),  # Higher threshold (filter low quality)
+                str(settings.whisper_logprob_thold),
             ]
 
-            # Add --no-fallback if enabled
             if settings.whisper_no_fallback:
                 command.append("--no-fallback")
 
-            # Add --suppress-regex if configured
             if settings.whisper_suppress_regex:
                 command.extend(["--suppress-regex", settings.whisper_suppress_regex])
 
             logger.debug(f"Command built: {len(command)} arguments")
-
             return command
 
         except Exception as e:
@@ -287,26 +252,13 @@ class WhisperTranscriber:
             raise
 
     def _parse_output(self, stdout: str, stderr: str, audio_path: str = None) -> str:
-        """
-        Parse Whisper output to extract transcription.
-        Whisper outputs transcription to stdout by default.
-
-        Args:
-            stdout: Standard output from Whisper
-            stderr: Standard error from Whisper
-            audio_path: Path to input audio file (for finding output file if needed)
-
-        Returns:
-            Transcribed text
-        """
+        """Parse Whisper output to extract transcription."""
         try:
             logger.debug("Parsing Whisper output...")
 
-            # Log stderr for debugging
             if stderr:
                 logger.debug(f"Whisper stderr: {stderr[:500]}...")
 
-            # Whisper outputs transcription to stdout (when not using --output-txt)
             transcription_text = ""
 
             if stdout and stdout.strip():
@@ -318,9 +270,7 @@ class WhisperTranscriber:
                 logger.debug(
                     "No transcription in stdout, checking if transcription is in stderr..."
                 )
-                # Sometimes Whisper might output to stderr (unlikely but possible)
                 if stderr and stderr.strip():
-                    # Check if stderr looks like transcription (not error message)
                     stderr_lower = stderr.lower()
                     is_error = any(
                         word in stderr_lower
@@ -337,19 +287,15 @@ class WhisperTranscriber:
                 logger.warning("No transcription found in stdout or stderr")
                 return ""
 
-            # Clean up output
             transcription_text = transcription_text.strip()
-            # Remove any leading/trailing whitespace and newlines
             transcription_text = " ".join(transcription_text.split())
 
             logger.debug(f"Output parsed: {len(transcription_text)} chars")
-
             return transcription_text
 
         except Exception as e:
             logger.error(f"Failed to parse Whisper output: {e}")
             logger.exception("Output parsing error:")
-            # Return empty string rather than failing
             return ""
 
     def transcribe_with_retry(
@@ -360,22 +306,7 @@ class WhisperTranscriber:
         max_retries: int = 3,
         timeout: Optional[int] = None,
     ) -> str:
-        """
-        Transcribe with retry logic.
-
-        Args:
-            audio_path: Path to audio file
-            language: Language code
-            model: Whisper model
-            max_retries: Maximum retry attempts
-            timeout: Timeout per attempt
-
-        Returns:
-            Transcribed text
-
-        Raises:
-            Exception: If all retries fail
-        """
+        """Transcribe with retry logic."""
         last_exception = None
 
         for attempt in range(max_retries):
@@ -390,7 +321,7 @@ class WhisperTranscriber:
                 else:
                     logger.warning(f"Empty transcription on attempt {attempt + 1}")
                     if attempt < max_retries - 1:
-                        time.sleep(2**attempt)  # Exponential backoff
+                        time.sleep(2**attempt)
                         continue
 
             except STTTimeoutError as e:
@@ -418,7 +349,6 @@ class WhisperTranscriber:
                 last_exception = e
                 raise
 
-        # All retries exhausted
         error_msg = f"All {max_retries} transcription attempts failed"
         logger.error(f"{error_msg}")
         if last_exception:
@@ -432,13 +362,7 @@ _whisper_transcriber: Optional[WhisperTranscriber] = None
 
 
 def get_whisper_transcriber() -> WhisperTranscriber:
-    """
-    Get or create global WhisperTranscriber instance (singleton).
-    This ensures the transcriber is initialized once and reused across all jobs.
-
-    Returns:
-        WhisperTranscriber instance
-    """
+    """Get or create global WhisperTranscriber instance (singleton)."""
     global _whisper_transcriber
 
     try:

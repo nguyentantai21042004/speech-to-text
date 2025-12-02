@@ -1,5 +1,7 @@
 """
 Whisper Library Adapter - Direct C library integration for Whisper.cpp
+
+Implements ITranscriber interface for dependency injection.
 Replaces subprocess-based CLI wrapper with direct shared library calls.
 Provides significant performance improvements by loading model once and reusing context.
 """
@@ -19,22 +21,17 @@ import numpy as np  # type: ignore
 from core.config import get_settings
 from core.logger import logger
 from core.errors import TranscriptionError
+from interfaces.transcriber import ITranscriber
 
 
 @contextmanager
 def capture_native_logs(source: str, level: str = "info"):
     """
     Capture stdout/stderr emitted by native libraries (ctypes) and pipe them through Loguru.
-
-    Args:
-        source: Short name describing the native component (e.g., "whisper_init")
-        level: Log level name to use when forwarding messages
     """
-
     log_method = getattr(logger, level, logger.info)
 
     if not hasattr(sys.stdout, "fileno") or not hasattr(sys.stderr, "fileno"):
-        # Environment does not support low-level FD redirection (e.g., some tests)
         yield
         return
 
@@ -99,25 +96,16 @@ def capture_native_logs(source: str, level: str = "info"):
 
 class WhisperLibraryError(Exception):
     """Base exception for Whisper library errors"""
-
     pass
 
 
 class LibraryLoadError(WhisperLibraryError):
     """Failed to load .so files"""
-
     pass
 
 
 class ModelInitError(WhisperLibraryError):
     """Failed to initialize Whisper context"""
-
-    pass
-
-
-class TranscriptionError(WhisperLibraryError):
-    """Failed to transcribe audio"""
-
     pass
 
 
@@ -144,9 +132,11 @@ MODEL_CONFIGS = {
 }
 
 
-class WhisperLibraryAdapter:
+class WhisperLibraryAdapter(ITranscriber):
     """
     Direct C library integration for Whisper.cpp.
+    
+    Implements ITranscriber interface for dependency injection.
     Loads shared libraries and Whisper model once, reuses context for all requests.
     """
 
@@ -155,7 +145,7 @@ class WhisperLibraryAdapter:
         Initialize Whisper library adapter.
 
         Args:
-            model_size: Model size (small/medium), defaults to settings
+            model_size: Model size (base/small/medium), defaults to settings
 
         Raises:
             LibraryLoadError: If libraries cannot be loaded
@@ -167,7 +157,6 @@ class WhisperLibraryAdapter:
 
         logger.info(f"Initializing WhisperLibraryAdapter with model={self.model_size}")
 
-        # Validate model size
         if self.model_size not in MODEL_CONFIGS:
             raise ValueError(
                 f"Unsupported model size: {self.model_size}. Must be one of {list(MODEL_CONFIGS.keys())}"
@@ -177,7 +166,6 @@ class WhisperLibraryAdapter:
         self.lib_dir = self.artifacts_dir / self.config["dir"]
         self.model_path = self.lib_dir / self.config["model"]
 
-        # Load libraries and initialize context
         self.lib = None
         self.ctx = None
 
@@ -192,23 +180,16 @@ class WhisperLibraryAdapter:
             raise
 
     def _load_libraries(self) -> None:
-        """
-        Load Whisper shared libraries in correct dependency order.
-
-        Raises:
-            LibraryLoadError: If any library fails to load
-        """
+        """Load Whisper shared libraries in correct dependency order."""
         try:
             logger.debug(f"Loading libraries from: {self.lib_dir}")
 
-            # Validate library directory exists
             if not self.lib_dir.exists():
                 raise LibraryLoadError(
                     f"Library directory not found: {self.lib_dir}. "
                     f"Run artifact download script first."
                 )
 
-            # Set LD_LIBRARY_PATH for this process
             old_ld_path = os.environ.get("LD_LIBRARY_PATH", "")
             new_ld_path = (
                 f"{self.lib_dir}:{old_ld_path}" if old_ld_path else str(self.lib_dir)
@@ -216,25 +197,16 @@ class WhisperLibraryAdapter:
             os.environ["LD_LIBRARY_PATH"] = new_ld_path
             logger.debug(f"Set LD_LIBRARY_PATH={new_ld_path}")
 
-            # Load dependencies in correct order (CRITICAL!)
-            # 1. Base libraries first
+            # Load dependencies in correct order
             logger.debug("Loading libggml-base.so.0...")
-            libggml_base = ctypes.CDLL(
-                str(self.lib_dir / "libggml-base.so.0"), mode=ctypes.RTLD_GLOBAL
-            )
+            ctypes.CDLL(str(self.lib_dir / "libggml-base.so.0"), mode=ctypes.RTLD_GLOBAL)
 
             logger.debug("Loading libggml-cpu.so.0...")
-            libggml_cpu = ctypes.CDLL(
-                str(self.lib_dir / "libggml-cpu.so.0"), mode=ctypes.RTLD_GLOBAL
-            )
+            ctypes.CDLL(str(self.lib_dir / "libggml-cpu.so.0"), mode=ctypes.RTLD_GLOBAL)
 
-            # 2. GGML core
             logger.debug("Loading libggml.so.0...")
-            libggml = ctypes.CDLL(
-                str(self.lib_dir / "libggml.so.0"), mode=ctypes.RTLD_GLOBAL
-            )
+            ctypes.CDLL(str(self.lib_dir / "libggml.so.0"), mode=ctypes.RTLD_GLOBAL)
 
-            # 3. Whisper (depends on GGML)
             logger.debug("Loading libwhisper.so...")
             with capture_native_logs("whisper_load", level="debug"):
                 self.lib = ctypes.CDLL(str(self.lib_dir / "libwhisper.so"))
@@ -247,28 +219,19 @@ class WhisperLibraryAdapter:
             raise LibraryLoadError(f"Unexpected error loading libraries: {e}")
 
     def _initialize_context(self) -> None:
-        """
-        Initialize Whisper context from model file.
-
-        Raises:
-            ModelInitError: If context initialization fails
-        """
+        """Initialize Whisper context from model file."""
         try:
             logger.debug(f"Initializing Whisper context from: {self.model_path}")
 
-            # Validate model file exists
             if not self.model_path.exists():
                 raise ModelInitError(
                     f"Model file not found: {self.model_path}. "
                     f"Run artifact download script first."
                 )
 
-            # Define function signature
-            # whisper_context* whisper_init_from_file(const char* path)
             self.lib.whisper_init_from_file.argtypes = [ctypes.c_char_p]
             self.lib.whisper_init_from_file.restype = ctypes.c_void_p
 
-            # Initialize context
             model_path_bytes = str(self.model_path).encode("utf-8")
             with capture_native_logs("whisper_init"):
                 self.ctx = self.lib.whisper_init_from_file(model_path_bytes)
@@ -291,10 +254,12 @@ class WhisperLibraryAdapter:
     def transcribe(self, audio_path: str, language: str = "vi", **kwargs) -> str:
         """
         Transcribe audio file using Whisper library.
+        
+        Implements ITranscriber.transcribe() interface.
         Automatically uses chunking for audio > 30 seconds.
 
         Args:
-            audio_path: Path to audio file (must be 16kHz WAV)
+            audio_path: Path to audio file
             language: Language code (vi, en, etc.)
             **kwargs: Additional parameters (for compatibility)
 
@@ -307,18 +272,13 @@ class WhisperLibraryAdapter:
         try:
             logger.debug(f"Transcribing: {audio_path} (language={language})")
 
-            # Validate audio file exists
             if not os.path.exists(audio_path):
                 raise TranscriptionError(f"Audio file not found: {audio_path}")
 
-            # Get settings
             settings = get_settings()
-
-            # Detect audio duration
-            duration = self._get_audio_duration(audio_path)
+            duration = self.get_audio_duration(audio_path)
             logger.info(f"Audio duration: {duration:.2f}s")
 
-            # Decide: chunk or direct?
             if settings.whisper_chunk_enabled and duration > settings.whisper_chunk_duration:
                 logger.info(f"Using chunked transcription (duration > {settings.whisper_chunk_duration}s)")
                 return self._transcribe_chunked(audio_path, language, duration)
@@ -331,91 +291,11 @@ class WhisperLibraryAdapter:
         except Exception as e:
             raise TranscriptionError(f"Transcription failed: {e}")
 
-    def _transcribe_direct(self, audio_path: str, language: str) -> str:
-        """
-        Direct transcription without chunking (fast path).
-
-        Args:
-            audio_path: Path to audio file
-            language: Language code
-
-        Returns:
-            Transcribed text
-        """
-        # Load audio data with librosa (resampled to 16kHz mono)
-        audio_data, audio_duration = self._load_audio(audio_path)
-
-        # Call whisper_full() for transcription
-        result = self._call_whisper_full(audio_data, language, audio_duration)
-
-        logger.debug(f"Transcription successful: {len(result['text'])} chars")
-        return result["text"]
-
-    def _transcribe_chunked(self, audio_path: str, language: str, duration: float) -> str:
-        """
-        Chunked transcription for long audio files.
-
-        Args:
-            audio_path: Path to audio file
-            language: Language code
-            duration: Total audio duration in seconds
-
-        Returns:
-            Merged transcription text
-
-        Raises:
-            TranscriptionError: If chunking or transcription fails
-        """
-        settings = get_settings()
-        chunk_duration = settings.whisper_chunk_duration
-        chunk_overlap = settings.whisper_chunk_overlap
-
-        logger.info(f"Starting chunked transcription: duration={duration:.2f}s, chunk_size={chunk_duration}s, overlap={chunk_overlap}s")
-
-        try:
-            # Split audio into chunks
-            chunk_files = self._split_audio(audio_path, duration, chunk_duration, chunk_overlap)
-            logger.info(f"Audio split into {len(chunk_files)} chunks")
-
-            # Process chunks sequentially
-            chunk_texts = []
-            for i, chunk_path in enumerate(chunk_files):
-                try:
-                    logger.info(f"Processing chunk {i+1}/{len(chunk_files)}")
-
-                    # Transcribe chunk
-                    chunk_text = self._transcribe_direct(chunk_path, language)
-                    chunk_texts.append(chunk_text)
-
-                    logger.debug(f"Chunk {i+1}/{len(chunk_files)} completed: {len(chunk_text)} chars")
-
-                except Exception as e:
-                    logger.error(f"Failed to process chunk {i+1}/{len(chunk_files)}: {e}")
-                    # Continue with remaining chunks, mark failed chunk as inaudible
-                    chunk_texts.append("[inaudible]")
-
-                finally:
-                    # Cleanup chunk file immediately
-                    try:
-                        if os.path.exists(chunk_path):
-                            os.remove(chunk_path)
-                            logger.debug(f"Cleaned up chunk file: {chunk_path}")
-                    except Exception as e:
-                        logger.warning(f"Failed to cleanup chunk file: {e}")
-
-            # Merge chunk results
-            merged_text = self._merge_chunks(chunk_texts)
-            logger.info(f"Chunked transcription complete: {len(chunk_texts)} chunks, {len(merged_text)} chars")
-
-            return merged_text
-
-        except Exception as e:
-            logger.error(f"Chunked transcription failed: {e}")
-            raise TranscriptionError(f"Chunked transcription failed: {e}")
-
-    def _get_audio_duration(self, audio_path: str) -> float:
+    def get_audio_duration(self, audio_path: str) -> float:
         """
         Get audio duration using ffprobe.
+        
+        Implements ITranscriber.get_audio_duration() interface.
 
         Args:
             audio_path: Path to audio file
@@ -427,7 +307,6 @@ class WhisperLibraryAdapter:
             TranscriptionError: If ffprobe fails
         """
         try:
-            # Use ffprobe to get duration
             cmd = [
                 "ffprobe",
                 "-v", "quiet",
@@ -449,26 +328,64 @@ class WhisperLibraryAdapter:
         except (KeyError, ValueError, json.JSONDecodeError) as e:
             raise TranscriptionError(f"Failed to parse ffprobe output: {e}")
 
+    # Alias for backward compatibility
+    def _get_audio_duration(self, audio_path: str) -> float:
+        """Backward compatibility alias for get_audio_duration."""
+        return self.get_audio_duration(audio_path)
+
+    def _transcribe_direct(self, audio_path: str, language: str) -> str:
+        """Direct transcription without chunking (fast path)."""
+        audio_data, audio_duration = self._load_audio(audio_path)
+        result = self._call_whisper_full(audio_data, language, audio_duration)
+        logger.debug(f"Transcription successful: {len(result['text'])} chars")
+        return result["text"]
+
+    def _transcribe_chunked(self, audio_path: str, language: str, duration: float) -> str:
+        """Chunked transcription for long audio files."""
+        settings = get_settings()
+        chunk_duration = settings.whisper_chunk_duration
+        chunk_overlap = settings.whisper_chunk_overlap
+
+        logger.info(f"Starting chunked transcription: duration={duration:.2f}s, chunk_size={chunk_duration}s, overlap={chunk_overlap}s")
+
+        try:
+            chunk_files = self._split_audio(audio_path, duration, chunk_duration, chunk_overlap)
+            logger.info(f"Audio split into {len(chunk_files)} chunks")
+
+            chunk_texts = []
+            for i, chunk_path in enumerate(chunk_files):
+                try:
+                    logger.info(f"Processing chunk {i+1}/{len(chunk_files)}")
+                    chunk_text = self._transcribe_direct(chunk_path, language)
+                    chunk_texts.append(chunk_text)
+                    logger.debug(f"Chunk {i+1}/{len(chunk_files)} completed: {len(chunk_text)} chars")
+
+                except Exception as e:
+                    logger.error(f"Failed to process chunk {i+1}/{len(chunk_files)}: {e}")
+                    chunk_texts.append("[inaudible]")
+
+                finally:
+                    try:
+                        if os.path.exists(chunk_path):
+                            os.remove(chunk_path)
+                            logger.debug(f"Cleaned up chunk file: {chunk_path}")
+                    except Exception as e:
+                        logger.warning(f"Failed to cleanup chunk file: {e}")
+
+            merged_text = self._merge_chunks(chunk_texts)
+            logger.info(f"Chunked transcription complete: {len(chunk_texts)} chunks, {len(merged_text)} chars")
+
+            return merged_text
+
+        except Exception as e:
+            logger.error(f"Chunked transcription failed: {e}")
+            raise TranscriptionError(f"Chunked transcription failed: {e}")
+
     def _split_audio(self, audio_path: str, duration: float, chunk_duration: int, overlap: int) -> list[str]:
-        """
-        Split audio into chunks using FFmpeg.
-
-        Args:
-            audio_path: Path to source audio file
-            duration: Total audio duration in seconds
-            chunk_duration: Duration of each chunk in seconds
-            overlap: Overlap between chunks in seconds
-
-        Returns:
-            List of chunk file paths
-
-        Raises:
-            TranscriptionError: If FFmpeg splitting fails
-        """
+        """Split audio into chunks using FFmpeg."""
         try:
             logger.debug(f"Starting audio split: duration={duration}, chunk_duration={chunk_duration}, overlap={overlap}")
 
-            # Calculate chunk boundaries
             chunks = []
             start = 0.0
 
@@ -476,27 +393,22 @@ class WhisperLibraryAdapter:
                 end = min(start + chunk_duration, duration)
                 chunks.append((start, end))
 
-                # Check if we've reached the end
                 if end >= duration:
                     break
 
-                # Move to next chunk with overlap
                 next_start = end - overlap
 
-                # Prevent infinite loop: ensure we're making progress
                 if next_start <= start:
                     logger.warning(f"Chunk calculation would not advance (start={start}, next={next_start}), breaking")
                     break
 
                 start = next_start
 
-                # Safety check to prevent infinite loop
                 if len(chunks) > 1000:
                     raise TranscriptionError("Too many chunks calculated, possible infinite loop")
 
             logger.info(f"Calculated {len(chunks)} chunk boundaries")
 
-            # Create chunks using FFmpeg
             chunk_files = []
             base_path = Path(audio_path).parent
             base_name = Path(audio_path).stem
@@ -507,14 +419,14 @@ class WhisperLibraryAdapter:
 
                 cmd = [
                     "ffmpeg",
-                    "-y",  # Overwrite output
-                    "-loglevel", "error",  # Only show errors
+                    "-y",
+                    "-loglevel", "error",
                     "-i", audio_path,
                     "-ss", str(start_time),
                     "-t", str(chunk_duration_actual),
-                    "-ar", "16000",  # Resample to 16kHz
-                    "-ac", "1",  # Convert to mono
-                    "-c:a", "pcm_s16le",  # PCM 16-bit (WAV)
+                    "-ar", "16000",
+                    "-ac", "1",
+                    "-c:a", "pcm_s16le",
                     str(chunk_path)
                 ]
 
@@ -536,58 +448,30 @@ class WhisperLibraryAdapter:
             raise TranscriptionError(f"Audio splitting failed: {e}")
 
     def _merge_chunks(self, chunk_texts: list[str]) -> str:
-        """
-        Merge chunk transcriptions into final text.
-        MVP implementation: simple concatenation with space.
-
-        Args:
-            chunk_texts: List of transcription texts from each chunk
-
-        Returns:
-            Merged transcription text
-        """
-        # Simple MVP merge: join with space
+        """Merge chunk transcriptions into final text."""
         merged = " ".join(text.strip() for text in chunk_texts if text.strip())
         logger.debug(f"Merged {len(chunk_texts)} chunks into {len(merged)} chars")
         return merged
 
     def _load_audio(self, audio_path: str) -> tuple[np.ndarray, float]:
-        """
-        Load audio file and convert to format expected by Whisper.
-        Whisper expects: 16kHz, mono, float32, range [-1, 1]
-
-        Args:
-            audio_path: Path to audio file
-
-        Returns:
-            Tuple of (audio_samples, duration_seconds)
-
-        Raises:
-            TranscriptionError: If audio loading fails
-        """
+        """Load audio file and convert to format expected by Whisper."""
         try:
             import librosa
-            import soundfile as sf
             
             logger.debug(f"Loading audio file: {audio_path}")
             
-            # Load audio with librosa (handles multiple formats via ffmpeg)
-            # librosa automatically resamples to target sr and converts to mono
             audio_data, sample_rate = librosa.load(
                 audio_path,
-                sr=16000,  # Resample to 16kHz
-                mono=True,  # Convert to mono
-                dtype=np.float32,  # float32 format
+                sr=16000,
+                mono=True,
+                dtype=np.float32,
             )
             
-            # Calculate duration
             duration = len(audio_data) / sample_rate
             
-            # Validate audio data
             if len(audio_data) == 0:
                 raise TranscriptionError("Audio file is empty or has zero duration")
             
-            # Ensure data is in range [-1, 1] (librosa should do this, but verify)
             max_val = np.abs(audio_data).max()
             if max_val > 1.0:
                 logger.warning(f"Audio data exceeds [-1, 1] range, normalizing (max={max_val:.2f})")
@@ -607,44 +491,27 @@ class WhisperLibraryAdapter:
     def _call_whisper_full(
         self, audio_data: np.ndarray, language: str, audio_duration: float
     ) -> dict[str, Any]:
-        """
-        Call whisper_full() C function to perform transcription.
-
-        Args:
-            audio_data: Audio samples (float32, 16kHz, mono)
-            language: Language code
-            audio_duration: Duration of audio in seconds
-
-        Returns:
-            Dictionary with transcription results
-
-        Raises:
-            TranscriptionError: If whisper_full() fails
-        """
+        """Call whisper_full() C function to perform transcription."""
         try:
             logger.debug(f"Starting Whisper inference (language={language})")
             
-            # Define minimal WhisperFullParams struct to modify n_threads
-            # We only need access to first few fields for performance tuning
             class WhisperFullParamsPartial(ctypes.Structure):
                 _fields_ = [
-                    ("strategy", ctypes.c_int),         # 0: WHISPER_SAMPLING_GREEDY
-                    ("n_threads", ctypes.c_int),        # ← This is what we need!
+                    ("strategy", ctypes.c_int),
+                    ("n_threads", ctypes.c_int),
                     ("n_max_text_ctx", ctypes.c_int),
                     ("offset_ms", ctypes.c_int),
                     ("duration_ms", ctypes.c_int),
-                    # ... rest of fields omitted, we only modify n_threads
                 ]
             
-            # Define Whisper API functions
             self.lib.whisper_full_default_params_by_ref.argtypes = [ctypes.c_int]
             self.lib.whisper_full_default_params_by_ref.restype = ctypes.POINTER(WhisperFullParamsPartial)
             
             self.lib.whisper_full.argtypes = [
-                ctypes.c_void_p,  # ctx
-                ctypes.c_void_p,  # params
-                ctypes.POINTER(ctypes.c_float),  # samples
-                ctypes.c_int,  # n_samples
+                ctypes.c_void_p,
+                ctypes.c_void_p,
+                ctypes.POINTER(ctypes.c_float),
+                ctypes.c_int,
             ]
             self.lib.whisper_full.restype = ctypes.c_int
             
@@ -654,42 +521,24 @@ class WhisperLibraryAdapter:
             self.lib.whisper_full_n_segments.argtypes = [ctypes.c_void_p]
             self.lib.whisper_full_n_segments.restype = ctypes.c_int
             
-            self.lib.whisper_full_get_segment_text.argtypes = [
-                ctypes.c_void_p,
-                ctypes.c_int,
-            ]
+            self.lib.whisper_full_get_segment_text.argtypes = [ctypes.c_void_p, ctypes.c_int]
             self.lib.whisper_full_get_segment_text.restype = ctypes.c_char_p
             
-            self.lib.whisper_full_get_segment_t0.argtypes = [
-                ctypes.c_void_p,
-                ctypes.c_int,
-            ]
+            self.lib.whisper_full_get_segment_t0.argtypes = [ctypes.c_void_p, ctypes.c_int]
             self.lib.whisper_full_get_segment_t0.restype = ctypes.c_int64
             
-            self.lib.whisper_full_get_segment_t1.argtypes = [
-                ctypes.c_void_p,
-                ctypes.c_int,
-            ]
+            self.lib.whisper_full_get_segment_t1.argtypes = [ctypes.c_void_p, ctypes.c_int]
             self.lib.whisper_full_get_segment_t1.restype = ctypes.c_int64
             
-            # Get default parameters using by_ref version (allocates on heap)
-            # WHISPER_SAMPLING_GREEDY = 0
             params_ptr = self.lib.whisper_full_default_params_by_ref(0)
             if not params_ptr:
                 raise TranscriptionError("Failed to get default whisper params")
-            
-            # Optimize n_threads for CPU utilization
-            import os
-            from core.config import get_settings
             
             settings = get_settings()
             n_threads = settings.whisper_n_threads
             
             if n_threads == 0:
-                # Auto-detect: use CPU count but cap for efficiency
                 cpu_count = os.cpu_count() or 4
-                # Whisper.cpp has diminishing returns after 8 threads
-                # Cap at 8 for optimal speed/resource ratio
                 n_threads = min(cpu_count, 8)
                 logger.debug(f"Auto-detected {cpu_count} CPUs, using {n_threads} threads")
             else:
@@ -698,23 +547,20 @@ class WhisperLibraryAdapter:
             params_ptr.contents.n_threads = n_threads
             logger.info(f"Whisper inference configured with {n_threads} threads")
             
-            # Prepare audio data as ctypes array
             n_samples = len(audio_data)
             audio_array = (ctypes.c_float * n_samples)(*audio_data)
             
-            # Call whisper_full
             logger.debug(f"Calling whisper_full with {n_samples} samples (language={language})")
             start_time = time.time()
             
             try:
                 result = self.lib.whisper_full(
                     self.ctx,
-                    params_ptr,  # Pass params pointer
+                    params_ptr,
                     audio_array,
                     n_samples,
                 )
             finally:
-                # Free params
                 self.lib.whisper_free_params(params_ptr)
             
             inference_time = time.time() - start_time
@@ -722,7 +568,6 @@ class WhisperLibraryAdapter:
             if result != 0:
                 raise TranscriptionError(f"whisper_full returned error code: {result}")
             
-            # Extract segments
             n_segments = self.lib.whisper_full_n_segments(self.ctx)
             logger.debug(f"Whisper inference completed: {n_segments} segments in {inference_time:.2f}s")
             
@@ -735,20 +580,16 @@ class WhisperLibraryAdapter:
                     "inference_time": inference_time,
                 }
             
-            # Collect all segments
             segments = []
             full_text_parts = []
             
             for i in range(n_segments):
-                # Get segment text
                 text_ptr = self.lib.whisper_full_get_segment_text(self.ctx, i)
                 text = text_ptr.decode("utf-8") if text_ptr else ""
                 
-                # Get timestamps (in 10ms units)
                 t0 = self.lib.whisper_full_get_segment_t0(self.ctx, i)
                 t1 = self.lib.whisper_full_get_segment_t1(self.ctx, i)
                 
-                # Convert to seconds
                 start_time_s = t0 / 100.0
                 end_time_s = t1 / 100.0
                 
@@ -761,9 +602,6 @@ class WhisperLibraryAdapter:
                 full_text_parts.append(text.strip())
             
             full_text = " ".join(full_text_parts)
-            
-            # Calculate confidence (placeholder - Whisper doesn't provide direct confidence)
-            # We use a heuristic: if we got segments, assume reasonable confidence
             confidence = 0.95 if n_segments > 0 else 0.0
             
             logger.info(

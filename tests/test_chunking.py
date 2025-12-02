@@ -8,7 +8,7 @@ import pytest
 from pathlib import Path
 from unittest.mock import Mock, patch, MagicMock
 
-from adapters.whisper.library_adapter import WhisperLibraryAdapter
+from infrastructure.whisper.library_adapter import WhisperLibraryAdapter
 from core.config import get_settings
 
 
@@ -22,10 +22,12 @@ class TestChunking:
         mock_result.stdout = '{"format": {"duration": "120.5"}}'
         mock_result.returncode = 0
 
-        mocker.patch('subprocess.run', return_value=mock_result)
+        mocker.patch("subprocess.run", return_value=mock_result)
 
         # Create adapter (will fail to init, but we only need the method)
-        with patch.object(WhisperLibraryAdapter, '__init__', lambda x, model_size=None: None):
+        with patch.object(
+            WhisperLibraryAdapter, "__init__", lambda x, model_size=None: None
+        ):
             adapter = WhisperLibraryAdapter()
             duration = adapter._get_audio_duration("/fake/path.mp3")
 
@@ -39,9 +41,11 @@ class TestChunking:
         mock_result = Mock()
         mock_result.stderr = "Invalid audio file"
 
-        mocker.patch('subprocess.run', side_effect=Exception("ffprobe failed"))
+        mocker.patch("subprocess.run", side_effect=Exception("ffprobe failed"))
 
-        with patch.object(WhisperLibraryAdapter, '__init__', lambda x, model_size=None: None):
+        with patch.object(
+            WhisperLibraryAdapter, "__init__", lambda x, model_size=None: None
+        ):
             adapter = WhisperLibraryAdapter()
 
             with pytest.raises(TranscriptionError):
@@ -54,9 +58,11 @@ class TestChunking:
         mock_result.returncode = 0
         mock_result.stderr = ""
 
-        mocker.patch('subprocess.run', return_value=mock_result)
+        mocker.patch("subprocess.run", return_value=mock_result)
 
-        with patch.object(WhisperLibraryAdapter, '__init__', lambda x, model_size=None: None):
+        with patch.object(
+            WhisperLibraryAdapter, "__init__", lambda x, model_size=None: None
+        ):
             adapter = WhisperLibraryAdapter()
 
             # Test with 90 seconds, 30s chunks, 1s overlap
@@ -65,13 +71,15 @@ class TestChunking:
                 temp_path = f.name
 
             try:
-                chunk_files = adapter._split_audio(temp_path, duration=90.0, chunk_duration=30, overlap=1)
+                chunk_files = adapter._split_audio(
+                    temp_path, duration=90.0, chunk_duration=30, overlap=1
+                )
 
                 # Should create 4 chunks
                 assert len(chunk_files) == 4
 
                 # Verify ffmpeg was called 4 times
-                assert mocker.patch('subprocess.run').call_count >= 4
+                assert mocker.patch("subprocess.run").call_count >= 4
 
             finally:
                 if os.path.exists(temp_path):
@@ -83,16 +91,20 @@ class TestChunking:
         mock_result.returncode = 0
         mock_result.stderr = ""
 
-        mocker.patch('subprocess.run', return_value=mock_result)
+        mocker.patch("subprocess.run", return_value=mock_result)
 
-        with patch.object(WhisperLibraryAdapter, '__init__', lambda x, model_size=None: None):
+        with patch.object(
+            WhisperLibraryAdapter, "__init__", lambda x, model_size=None: None
+        ):
             adapter = WhisperLibraryAdapter()
 
             with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
                 temp_path = f.name
 
             try:
-                chunk_files = adapter._split_audio(temp_path, duration=20.0, chunk_duration=30, overlap=1)
+                chunk_files = adapter._split_audio(
+                    temp_path, duration=20.0, chunk_duration=30, overlap=1
+                )
 
                 # Should create 1 chunk
                 assert len(chunk_files) == 1
@@ -103,7 +115,9 @@ class TestChunking:
 
     def test_merge_chunks_basic(self):
         """Test basic chunk merging"""
-        with patch.object(WhisperLibraryAdapter, '__init__', lambda x, model_size=None: None):
+        with patch.object(
+            WhisperLibraryAdapter, "__init__", lambda x, model_size=None: None
+        ):
             adapter = WhisperLibraryAdapter()
 
             chunk_texts = ["Hello world", "this is a", "test"]
@@ -113,7 +127,9 @@ class TestChunking:
 
     def test_merge_chunks_with_empty_strings(self):
         """Test merging chunks with empty strings"""
-        with patch.object(WhisperLibraryAdapter, '__init__', lambda x, model_size=None: None):
+        with patch.object(
+            WhisperLibraryAdapter, "__init__", lambda x, model_size=None: None
+        ):
             adapter = WhisperLibraryAdapter()
 
             chunk_texts = ["Hello", "", "world", "   ", "test"]
@@ -123,7 +139,9 @@ class TestChunking:
 
     def test_merge_chunks_with_whitespace(self):
         """Test merging chunks with extra whitespace"""
-        with patch.object(WhisperLibraryAdapter, '__init__', lambda x, model_size=None: None):
+        with patch.object(
+            WhisperLibraryAdapter, "__init__", lambda x, model_size=None: None
+        ):
             adapter = WhisperLibraryAdapter()
 
             chunk_texts = ["  Hello  ", "  world  "]
@@ -135,23 +153,27 @@ class TestChunking:
         """Test that chunking configuration is properly loaded"""
         settings = get_settings()
 
-        assert hasattr(settings, 'whisper_chunk_enabled')
-        assert hasattr(settings, 'whisper_chunk_duration')
-        assert hasattr(settings, 'whisper_chunk_overlap')
+        assert hasattr(settings, "whisper_chunk_enabled")
+        assert hasattr(settings, "whisper_chunk_duration")
+        assert hasattr(settings, "whisper_chunk_overlap")
 
         # Check default values
         assert settings.whisper_chunk_duration == 30
         assert settings.whisper_chunk_overlap == 1
 
-    @patch.object(WhisperLibraryAdapter, '_get_audio_duration')
-    @patch.object(WhisperLibraryAdapter, '_transcribe_direct')
-    @patch.object(WhisperLibraryAdapter, '_transcribe_chunked')
-    def test_transcribe_uses_direct_for_short_audio(self, mock_chunked, mock_direct, mock_duration):
+    @patch.object(WhisperLibraryAdapter, "_get_audio_duration")
+    @patch.object(WhisperLibraryAdapter, "_transcribe_direct")
+    @patch.object(WhisperLibraryAdapter, "_transcribe_chunked")
+    def test_transcribe_uses_direct_for_short_audio(
+        self, mock_chunked, mock_direct, mock_duration
+    ):
         """Test that short audio uses direct transcription"""
         mock_duration.return_value = 25.0
         mock_direct.return_value = "Test transcription"
 
-        with patch.object(WhisperLibraryAdapter, '__init__', lambda x, model_size=None: None):
+        with patch.object(
+            WhisperLibraryAdapter, "__init__", lambda x, model_size=None: None
+        ):
             adapter = WhisperLibraryAdapter()
             adapter.ctx = MagicMock()  # Mock context
             adapter.lib = MagicMock()  # Mock library
@@ -172,15 +194,19 @@ class TestChunking:
                 if os.path.exists(temp_path):
                     os.remove(temp_path)
 
-    @patch.object(WhisperLibraryAdapter, '_get_audio_duration')
-    @patch.object(WhisperLibraryAdapter, '_transcribe_direct')
-    @patch.object(WhisperLibraryAdapter, '_transcribe_chunked')
-    def test_transcribe_uses_chunked_for_long_audio(self, mock_chunked, mock_direct, mock_duration):
+    @patch.object(WhisperLibraryAdapter, "_get_audio_duration")
+    @patch.object(WhisperLibraryAdapter, "_transcribe_direct")
+    @patch.object(WhisperLibraryAdapter, "_transcribe_chunked")
+    def test_transcribe_uses_chunked_for_long_audio(
+        self, mock_chunked, mock_direct, mock_duration
+    ):
         """Test that long audio uses chunked transcription"""
         mock_duration.return_value = 120.0
         mock_chunked.return_value = "Long transcription"
 
-        with patch.object(WhisperLibraryAdapter, '__init__', lambda x, model_size=None: None):
+        with patch.object(
+            WhisperLibraryAdapter, "__init__", lambda x, model_size=None: None
+        ):
             adapter = WhisperLibraryAdapter()
             adapter.ctx = MagicMock()  # Mock context
             adapter.lib = MagicMock()  # Mock library

@@ -63,3 +63,8 @@ Thumbs.db
 *~
 *.swo
 *.swp
+
+# .kilo/*
+# .kilocode/*
+# .agent/*
+# .gemini/*

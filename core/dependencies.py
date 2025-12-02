@@ -1,6 +1,9 @@
 """
-System dependencies validation for STT processing.
-Checks required tools (ffmpeg, ffprobe, whisper) are installed and accessible.
+System dependencies validation and FastAPI dependency injection.
+
+This module provides:
+- System dependency validation (ffmpeg, ffprobe, whisper)
+- FastAPI dependency injection functions for routes
 """
 
 import os
@@ -114,3 +117,63 @@ def validate_dependencies(check_ffmpeg: bool = True) -> None:
             )
 
     logger.info("System dependencies check passed")
+
+
+
+# =============================================================================
+# FastAPI Dependency Injection
+# =============================================================================
+
+
+def get_transcribe_service_dependency():
+    """
+    FastAPI dependency for TranscribeService.
+    
+    Usage in routes:
+        @router.post("/transcribe")
+        async def transcribe(
+            service: TranscribeService = Depends(get_transcribe_service_dependency)
+        ):
+            ...
+    
+    Returns:
+        TranscribeService instance with injected dependencies
+    """
+    from core.container import get_transcribe_service
+    return get_transcribe_service()
+
+
+def get_transcriber_dependency():
+    """
+    FastAPI dependency for ITranscriber.
+    
+    Usage in routes:
+        @router.post("/transcribe")
+        async def transcribe(
+            transcriber: ITranscriber = Depends(get_transcriber_dependency)
+        ):
+            ...
+    
+    Returns:
+        ITranscriber implementation
+    """
+    from core.container import get_transcriber
+    return get_transcriber()
+
+
+def get_audio_downloader_dependency():
+    """
+    FastAPI dependency for IAudioDownloader.
+    
+    Usage in routes:
+        @router.post("/download")
+        async def download(
+            downloader: IAudioDownloader = Depends(get_audio_downloader_dependency)
+        ):
+            ...
+    
+    Returns:
+        IAudioDownloader implementation
+    """
+    from core.container import get_audio_downloader
+    return get_audio_downloader()

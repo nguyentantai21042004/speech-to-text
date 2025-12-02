@@ -1,19 +1,25 @@
+"""
+Transcription Routes - API endpoints for audio transcription.
+
+Uses dependency injection for TranscribeService.
+"""
+
 from fastapi import APIRouter, HTTPException, status, Depends
 from pydantic import BaseModel, HttpUrl, Field
-from services.transcription import TranscribeService
-from internal.api.utils import success_response, error_response
-from internal.api.dependencies.auth import verify_internal_api_key
-from core.logger import logger
 from typing import Optional
 import asyncio
 
+from core.logger import logger
+from core.dependencies import get_transcribe_service_dependency
+from services.transcription import TranscribeService
+from internal.api.dependencies.auth import verify_internal_api_key
+
 router = APIRouter()
-# Initialize service once (singleton-like)
-transcribe_service = TranscribeService()
 
 
 class TranscribeRequest(BaseModel):
     """Request model for transcription from presigned URL."""
+
     media_url: HttpUrl = Field(
         ..., description="Presigned URL to audio/video file (e.g., MinIO)"
     )
@@ -24,7 +30,10 @@ class TranscribeRequest(BaseModel):
 
 class TranscribeResponse(BaseModel):
     """Response model for transcription result."""
-    status: str = Field(..., description="Status of transcription (success, timeout, error)")
+
+    status: str = Field(
+        ..., description="Status of transcription (success, timeout, error)"
+    )
     transcription: str = Field(..., description="Transcribed text")
     duration: float = Field(..., description="Audio duration in seconds")
     confidence: float = Field(..., description="Confidence score (0.0-1.0)")
@@ -54,31 +63,36 @@ class TranscribeResponse(BaseModel):
 async def transcribe(
     request: TranscribeRequest,
     api_key: str = Depends(verify_internal_api_key),
+    service: TranscribeService = Depends(get_transcribe_service_dependency),
 ):
     """
     Transcribe audio from presigned URL with authentication and timeout.
+    
+    Uses dependency injection for TranscribeService.
     """
     try:
-        logger.info(f"Transcription request from authenticated client for language={request.language}")
-        
+        logger.info(
+            f"Transcription request from authenticated client for language={request.language}"
+        )
+
         # Convert HttpUrl to string
         url_str = str(request.media_url)
-        
-        # Call transcription service with timeout
-        result = await transcribe_service.transcribe_from_url(
+
+        # Call transcription service with timeout (service is injected via DI)
+        result = await service.transcribe_from_url(
             audio_url=url_str,
             language=request.language,
         )
-        
+
         # Map service result to response schema
         return TranscribeResponse(
             status="success",
             transcription=result["text"],
             duration=result.get("audio_duration", 0.0),
-            confidence=result.get("confidence", 0.98),  # Placeholder until we extract from whisper
+            confidence=result.get("confidence", 0.98),
             processing_time=result["duration"],
         )
-        
+
     except asyncio.TimeoutError:
         logger.error("Transcription timeout exceeded")
         return TranscribeResponse(
