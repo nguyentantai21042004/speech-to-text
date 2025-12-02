@@ -1,0 +1,3 @@
+# This directory stores benchmark results
+# Files are auto-generated with format: {arch}_{model}_{timestamp}.json
+# Example: m4_base_20241202_120000.json, xeon_small_20241202_130000.json

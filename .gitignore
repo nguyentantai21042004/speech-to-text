@@ -68,3 +68,5 @@ Thumbs.db
 # .kilocode/*
 # .agent/*
 # .gemini/*
+
+*.mp3
