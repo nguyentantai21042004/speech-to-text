@@ -65,5 +65,10 @@ echo "=== Setting library path ==="
 export LD_LIBRARY_PATH="$MODEL_DIR:$LD_LIBRARY_PATH"
 echo "LD_LIBRARY_PATH=$LD_LIBRARY_PATH"
 
+# Write LD_LIBRARY_PATH to a file that Python can read
+echo "$LD_LIBRARY_PATH" > /tmp/ld_library_path.txt
+
 echo "=== Starting uvicorn ==="
-exec .venv/bin/uvicorn cmd.api.main:app --host 0.0.0.0 --port 8000 --reload
+# Use --no-reload for production-like behavior with proper LD_LIBRARY_PATH
+# For development, we sacrifice hot-reload to ensure library loading works
+exec env LD_LIBRARY_PATH="$LD_LIBRARY_PATH" .venv/bin/uvicorn cmd.api.main:app --host 0.0.0.0 --port 8000

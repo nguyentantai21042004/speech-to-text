@@ -96,18 +96,24 @@ def capture_native_logs(source: str, level: str = "info"):
 
 class WhisperLibraryError(Exception):
     """Base exception for Whisper library errors"""
+
     pass
 
 
 class LibraryLoadError(WhisperLibraryError):
     """Failed to load .so files"""
+
     pass
 
 
 class ModelInitError(WhisperLibraryError):
     """Failed to initialize Whisper context"""
+
     pass
 
+
+# Task 3.2.1: Minimum chunk duration constant
+MIN_CHUNK_DURATION = 2.0  # seconds - chunks shorter than this will be skipped or merged
 
 # Model configuration mapping
 MODEL_CONFIGS = {
@@ -135,7 +141,7 @@ MODEL_CONFIGS = {
 class WhisperLibraryAdapter(ITranscriber):
     """
     Direct C library integration for Whisper.cpp.
-    
+
     Implements ITranscriber interface for dependency injection.
     Loads shared libraries and Whisper model once, reuses context for all requests.
     """
@@ -169,11 +175,14 @@ class WhisperLibraryAdapter(ITranscriber):
         self.lib = None
         self.ctx = None
 
+        # Task 2.1.2: Add threading lock for thread-safe context access
+        self._lock = threading.Lock()
+
         try:
             self._load_libraries()
             self._initialize_context()
             logger.info(
-                f"WhisperLibraryAdapter initialized successfully (model={self.model_size})"
+                f"WhisperLibraryAdapter initialized successfully (model={self.model_size}, thread_safe=True)"
             )
         except Exception as e:
             logger.error(f"Failed to initialize WhisperLibraryAdapter: {e}")
@@ -199,7 +208,9 @@ class WhisperLibraryAdapter(ITranscriber):
 
             # Load dependencies in correct order
             logger.debug("Loading libggml-base.so.0...")
-            ctypes.CDLL(str(self.lib_dir / "libggml-base.so.0"), mode=ctypes.RTLD_GLOBAL)
+            ctypes.CDLL(
+                str(self.lib_dir / "libggml-base.so.0"), mode=ctypes.RTLD_GLOBAL
+            )
 
             logger.debug("Loading libggml-cpu.so.0...")
             ctypes.CDLL(str(self.lib_dir / "libggml-cpu.so.0"), mode=ctypes.RTLD_GLOBAL)
@@ -254,7 +265,7 @@ class WhisperLibraryAdapter(ITranscriber):
     def transcribe(self, audio_path: str, language: str = "vi", **kwargs) -> str:
         """
         Transcribe audio file using Whisper library.
-        
+
         Implements ITranscriber.transcribe() interface.
         Automatically uses chunking for audio > 30 seconds.
 
@@ -279,8 +290,13 @@ class WhisperLibraryAdapter(ITranscriber):
             duration = self.get_audio_duration(audio_path)
             logger.info(f"Audio duration: {duration:.2f}s")
 
-            if settings.whisper_chunk_enabled and duration > settings.whisper_chunk_duration:
-                logger.info(f"Using chunked transcription (duration > {settings.whisper_chunk_duration}s)")
+            if (
+                settings.whisper_chunk_enabled
+                and duration > settings.whisper_chunk_duration
+            ):
+                logger.info(
+                    f"Using chunked transcription (duration > {settings.whisper_chunk_duration}s)"
+                )
                 return self._transcribe_chunked(audio_path, language, duration)
             else:
                 logger.info("Using direct transcription (fast path)")
@@ -294,7 +310,7 @@ class WhisperLibraryAdapter(ITranscriber):
     def get_audio_duration(self, audio_path: str) -> float:
         """
         Get audio duration using ffprobe.
-        
+
         Implements ITranscriber.get_audio_duration() interface.
 
         Args:
@@ -309,10 +325,12 @@ class WhisperLibraryAdapter(ITranscriber):
         try:
             cmd = [
                 "ffprobe",
-                "-v", "quiet",
-                "-print_format", "json",
+                "-v",
+                "quiet",
+                "-print_format",
+                "json",
                 "-show_format",
-                audio_path
+                audio_path,
             ]
 
             result = subprocess.run(cmd, capture_output=True, text=True, check=True)
@@ -340,28 +358,58 @@ class WhisperLibraryAdapter(ITranscriber):
         logger.debug(f"Transcription successful: {len(result['text'])} chars")
         return result["text"]
 
-    def _transcribe_chunked(self, audio_path: str, language: str, duration: float) -> str:
+    def _transcribe_chunked(
+        self, audio_path: str, language: str, duration: float
+    ) -> str:
         """Chunked transcription for long audio files."""
         settings = get_settings()
         chunk_duration = settings.whisper_chunk_duration
         chunk_overlap = settings.whisper_chunk_overlap
 
-        logger.info(f"Starting chunked transcription: duration={duration:.2f}s, chunk_size={chunk_duration}s, overlap={chunk_overlap}s")
+        logger.info(
+            f"Starting chunked transcription: duration={duration:.2f}s, chunk_size={chunk_duration}s, overlap={chunk_overlap}s"
+        )
 
         try:
-            chunk_files = self._split_audio(audio_path, duration, chunk_duration, chunk_overlap)
+            chunk_files = self._split_audio(
+                audio_path, duration, chunk_duration, chunk_overlap
+            )
             logger.info(f"Audio split into {len(chunk_files)} chunks")
 
             chunk_texts = []
+            successful_chunks = 0
+            failed_chunks = 0
+
             for i, chunk_path in enumerate(chunk_files):
                 try:
-                    logger.info(f"Processing chunk {i+1}/{len(chunk_files)}")
+                    logger.info(
+                        f"Processing chunk {i+1}/{len(chunk_files)}: {chunk_path}"
+                    )
                     chunk_text = self._transcribe_direct(chunk_path, language)
                     chunk_texts.append(chunk_text)
-                    logger.debug(f"Chunk {i+1}/{len(chunk_files)} completed: {len(chunk_text)} chars")
+                    successful_chunks += 1
+
+                    # Task 1.3.1: Log chunk result with preview
+                    preview = (
+                        chunk_text[:50] + "..." if len(chunk_text) > 50 else chunk_text
+                    )
+                    logger.info(
+                        f"Chunk {i+1}/{len(chunk_files)} result: {len(chunk_text)} chars, preview='{preview}'"
+                    )
+
+                    # Task 1.3.2: Log warning for empty chunk results
+                    if not chunk_text.strip():
+                        logger.warning(
+                            f"Chunk {i+1}/{len(chunk_files)} returned empty text - may contain silence or invalid audio"
+                        )
 
                 except Exception as e:
-                    logger.error(f"Failed to process chunk {i+1}/{len(chunk_files)}: {e}")
+                    failed_chunks += 1
+                    # Task 1.1.1: Add full exception traceback
+                    logger.error(
+                        f"Failed to process chunk {i+1}/{len(chunk_files)} (path={chunk_path}, exception_type={type(e).__name__}): {e}"
+                    )
+                    logger.exception("Chunk processing exception details:")
                     chunk_texts.append("[inaudible]")
 
                 finally:
@@ -372,8 +420,16 @@ class WhisperLibraryAdapter(ITranscriber):
                     except Exception as e:
                         logger.warning(f"Failed to cleanup chunk file: {e}")
 
+            # Task 1.3.3: Add summary log after all chunks complete
+            logger.info(
+                f"Chunked transcription summary: total={len(chunk_files)}, "
+                f"successful={successful_chunks}, failed={failed_chunks}"
+            )
+
             merged_text = self._merge_chunks(chunk_texts)
-            logger.info(f"Chunked transcription complete: {len(chunk_texts)} chunks, {len(merged_text)} chars")
+            logger.info(
+                f"Chunked transcription complete: {len(chunk_texts)} chunks, {len(merged_text)} chars"
+            )
 
             return merged_text
 
@@ -381,10 +437,14 @@ class WhisperLibraryAdapter(ITranscriber):
             logger.error(f"Chunked transcription failed: {e}")
             raise TranscriptionError(f"Chunked transcription failed: {e}")
 
-    def _split_audio(self, audio_path: str, duration: float, chunk_duration: int, overlap: int) -> list[str]:
+    def _split_audio(
+        self, audio_path: str, duration: float, chunk_duration: int, overlap: int
+    ) -> list[str]:
         """Split audio into chunks using FFmpeg."""
         try:
-            logger.debug(f"Starting audio split: duration={duration}, chunk_duration={chunk_duration}, overlap={overlap}")
+            logger.debug(
+                f"Starting audio split: duration={duration}, chunk_duration={chunk_duration}, overlap={overlap}"
+            )
 
             chunks = []
             start = 0.0
@@ -399,15 +459,34 @@ class WhisperLibraryAdapter(ITranscriber):
                 next_start = end - overlap
 
                 if next_start <= start:
-                    logger.warning(f"Chunk calculation would not advance (start={start}, next={next_start}), breaking")
+                    logger.warning(
+                        f"Chunk calculation would not advance (start={start}, next={next_start}), breaking"
+                    )
                     break
 
                 start = next_start
 
                 if len(chunks) > 1000:
-                    raise TranscriptionError("Too many chunks calculated, possible infinite loop")
+                    raise TranscriptionError(
+                        "Too many chunks calculated, possible infinite loop"
+                    )
 
             logger.info(f"Calculated {len(chunks)} chunk boundaries")
+
+            # Task 3.2.3: Merge short final chunk with previous instead of skipping
+            if len(chunks) > 1:
+                last_chunk_duration = chunks[-1][1] - chunks[-1][0]
+                if last_chunk_duration < MIN_CHUNK_DURATION:
+                    logger.warning(
+                        f"Final chunk too short ({last_chunk_duration:.2f}s < {MIN_CHUNK_DURATION}s), "
+                        f"merging with previous chunk"
+                    )
+                    # Extend previous chunk to include the final chunk
+                    prev_start, _ = chunks[-2]
+                    _, last_end = chunks[-1]
+                    chunks[-2] = (prev_start, last_end)
+                    chunks.pop()  # Remove the short final chunk
+                    logger.info(f"Merged final chunk, now {len(chunks)} chunks")
 
             chunk_files = []
             base_path = Path(audio_path).parent
@@ -417,20 +496,36 @@ class WhisperLibraryAdapter(ITranscriber):
                 chunk_path = base_path / f"{base_name}_chunk_{i}.wav"
                 chunk_duration_actual = end_time - start_time
 
+                # Task 3.2.2: Skip chunks shorter than minimum (except merged final)
+                if chunk_duration_actual < MIN_CHUNK_DURATION and i < len(chunks) - 1:
+                    logger.warning(
+                        f"Skipping chunk {i+1}: duration {chunk_duration_actual:.2f}s < {MIN_CHUNK_DURATION}s"
+                    )
+                    continue
+
                 cmd = [
                     "ffmpeg",
                     "-y",
-                    "-loglevel", "error",
-                    "-i", audio_path,
-                    "-ss", str(start_time),
-                    "-t", str(chunk_duration_actual),
-                    "-ar", "16000",
-                    "-ac", "1",
-                    "-c:a", "pcm_s16le",
-                    str(chunk_path)
+                    "-loglevel",
+                    "error",
+                    "-i",
+                    audio_path,
+                    "-ss",
+                    str(start_time),
+                    "-t",
+                    str(chunk_duration_actual),
+                    "-ar",
+                    "16000",
+                    "-ac",
+                    "1",
+                    "-c:a",
+                    "pcm_s16le",
+                    str(chunk_path),
                 ]
 
-                logger.info(f"Creating chunk {i+1}/{len(chunks)}: {start_time:.2f}s - {end_time:.2f}s")
+                logger.info(
+                    f"Creating chunk {i+1}/{len(chunks)}: {start_time:.2f}s - {end_time:.2f}s"
+                )
 
                 result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
 
@@ -448,167 +543,477 @@ class WhisperLibraryAdapter(ITranscriber):
             raise TranscriptionError(f"Audio splitting failed: {e}")
 
     def _merge_chunks(self, chunk_texts: list[str]) -> str:
-        """Merge chunk transcriptions into final text."""
-        merged = " ".join(text.strip() for text in chunk_texts if text.strip())
-        logger.debug(f"Merged {len(chunk_texts)} chunks into {len(merged)} chars")
+        """
+        Task 4.2: Merge chunk transcriptions with smart duplicate detection.
+
+        Detects and removes duplicate text at chunk boundaries caused by overlap.
+        """
+        # Task 4.2.2: Handle edge cases - empty chunks
+        if not chunk_texts:
+            logger.debug("No chunks to merge")
+            return ""
+
+        # Filter out empty chunks and [inaudible] markers for merge logic
+        valid_texts = [
+            text.strip()
+            for text in chunk_texts
+            if text.strip() and text.strip() != "[inaudible]"
+        ]
+
+        if not valid_texts:
+            # All chunks were empty or inaudible
+            logger.warning("All chunks were empty or inaudible")
+            return ""
+
+        if len(valid_texts) == 1:
+            logger.debug("Only one valid chunk, no merge needed")
+            return valid_texts[0]
+
+        # Task 4.2.1: Implement duplicate detection at boundaries
+        merged_parts = [valid_texts[0]]
+        duplicates_removed = 0
+
+        for i in range(1, len(valid_texts)):
+            current = valid_texts[i]
+            if not current:
+                continue
+
+            # Get last N words of previous chunk and first N words of current
+            prev_words = merged_parts[-1].split()
+            curr_words = current.split()
+
+            # Task 4.2.2: Handle single word chunks
+            if len(prev_words) < 2 or len(curr_words) < 2:
+                merged_parts.append(current)
+                continue
+
+            # Compare last 5 words of previous with first 5 words of current
+            compare_length = min(5, len(prev_words), len(curr_words))
+            prev_tail = prev_words[-compare_length:]
+            curr_head = curr_words[:compare_length]
+
+            # Find overlap - look for matching sequences
+            overlap_start = 0
+            for j in range(1, compare_length + 1):
+                # Check if last j words of prev match first j words of curr
+                if prev_tail[-j:] == curr_head[:j]:
+                    overlap_start = j
+
+            # Remove overlapping words from current chunk
+            if overlap_start > 0:
+                current = " ".join(curr_words[overlap_start:])
+                duplicates_removed += overlap_start
+                logger.debug(
+                    f"Removed {overlap_start} duplicate words at chunk boundary {i}"
+                )
+
+            if current.strip():
+                merged_parts.append(current.strip())
+
+        merged = " ".join(merged_parts)
+        logger.info(
+            f"Smart merge: {len(chunk_texts)} chunks -> {len(merged)} chars, {duplicates_removed} duplicate words removed"
+        )
         return merged
+
+    def _validate_audio(self, audio_data: np.ndarray) -> tuple[bool, str]:
+        """
+        Task 3.1.1: Validate audio has actual content before transcription.
+
+        Args:
+            audio_data: Audio samples as numpy array
+
+        Returns:
+            Tuple of (is_valid, reason)
+        """
+        # Check for empty audio
+        if len(audio_data) == 0:
+            return False, "Audio is empty (0 samples)"
+
+        audio_max = np.abs(audio_data).max()
+        audio_std = np.std(audio_data)
+
+        # Check for silent audio (max < 0.01)
+        if audio_max < 0.01:
+            return (
+                False,
+                f"Audio is silent or very low volume (max={audio_max:.4f} < 0.01)",
+            )
+
+        # Check for constant noise (std < 0.001)
+        if audio_std < 0.001:
+            return False, f"Audio is constant noise (std={audio_std:.6f} < 0.001)"
+
+        return True, "Audio content valid"
 
     def _load_audio(self, audio_path: str) -> tuple[np.ndarray, float]:
         """Load audio file and convert to format expected by Whisper."""
         try:
             import librosa
-            
+
             logger.debug(f"Loading audio file: {audio_path}")
-            
+
             audio_data, sample_rate = librosa.load(
                 audio_path,
                 sr=16000,
                 mono=True,
                 dtype=np.float32,
             )
-            
+
             duration = len(audio_data) / sample_rate
-            
+
             if len(audio_data) == 0:
                 raise TranscriptionError("Audio file is empty or has zero duration")
-            
-            max_val = np.abs(audio_data).max()
-            if max_val > 1.0:
-                logger.warning(f"Audio data exceeds [-1, 1] range, normalizing (max={max_val:.2f})")
-                audio_data = audio_data / max_val
-            
+
+            # Task 1.2.1: Add audio statistics logging
+            audio_max = np.abs(audio_data).max()
+            audio_mean = np.abs(audio_data).mean()
+            audio_std = np.std(audio_data)
+
+            logger.info(
+                f"Audio stats: max={audio_max:.4f}, mean={audio_mean:.4f}, "
+                f"std={audio_std:.4f}, samples={len(audio_data)}"
+            )
+
+            # Task 3.1.2 & 3.1.3: Validate audio content
+            is_valid, reason = self._validate_audio(audio_data)
+            if not is_valid:
+                logger.warning(
+                    f"Audio validation failed: {reason}. Returning empty transcription."
+                )
+                # Return empty audio data to signal skip
+                # The caller should handle this gracefully
+
+            # Task 1.2.2: Add warning for silent audio (max < 0.01)
+            if audio_max < 0.01:
+                logger.warning(
+                    f"Audio appears to be silent or very low volume (max={audio_max:.4f} < 0.01). "
+                    f"Transcription may return empty result."
+                )
+
+            # Task 1.2.3: Add warning for constant noise (std < 0.001)
+            if audio_std < 0.001:
+                logger.warning(
+                    f"Audio appears to be constant noise (std={audio_std:.6f} < 0.001). "
+                    f"Transcription may return empty result."
+                )
+
+            # Normalize if needed
+            if audio_max > 1.0:
+                logger.warning(
+                    f"Audio data exceeds [-1, 1] range, normalizing (max={audio_max:.2f})"
+                )
+                audio_data = audio_data / audio_max
+
             logger.info(
                 f"Audio loaded: duration={duration:.2f}s, samples={len(audio_data)}, "
                 f"sample_rate={sample_rate}Hz, channels=mono"
             )
-            
+
             return audio_data, duration
 
+        except TranscriptionError:
+            raise
         except Exception as e:
             logger.error(f"Failed to load audio: {e}")
+            logger.exception("Audio loading exception details:")
             raise TranscriptionError(f"Failed to load audio: {e}")
+
+    def _check_context_health(self) -> bool:
+        """
+        Task 3.3.1: Check if Whisper context is still valid.
+
+        Returns:
+            True if context is healthy, False otherwise
+        """
+        try:
+            if not self.ctx:
+                logger.error("Whisper context is None")
+                return False
+
+            if not self.lib:
+                logger.error("Whisper library is None")
+                return False
+
+            # Basic sanity check - context pointer should be non-zero
+            if not bool(self.ctx):
+                logger.error("Whisper context pointer is invalid")
+                return False
+
+            return True
+
+        except Exception as e:
+            logger.error(f"Context health check failed: {e}")
+            return False
+
+    def _reinitialize_context(self) -> None:
+        """
+        Task 3.3.2: Reinitialize Whisper context if corrupted.
+
+        Raises:
+            ModelInitError: If reinitialization fails
+        """
+        logger.warning("Reinitializing Whisper context due to health check failure...")
+
+        # Free existing context safely
+        if self.ctx and self.lib:
+            try:
+                self.lib.whisper_free.argtypes = [ctypes.c_void_p]
+                self.lib.whisper_free.restype = None
+                self.lib.whisper_free(self.ctx)
+                logger.debug("Old context freed")
+            except Exception as e:
+                logger.warning(
+                    f"Failed to free old context (may already be invalid): {e}"
+                )
+
+        self.ctx = None
+
+        # Reinitialize
+        try:
+            self._initialize_context()
+            logger.warning("Whisper context reinitialized successfully")
+        except Exception as e:
+            logger.error(f"Failed to reinitialize Whisper context: {e}")
+            raise ModelInitError(f"Context reinitialization failed: {e}")
 
     def _call_whisper_full(
         self, audio_data: np.ndarray, language: str, audio_duration: float
     ) -> dict[str, Any]:
-        """Call whisper_full() C function to perform transcription."""
+        """
+        Call whisper_full() C function to perform transcription.
+
+        Thread-safe: Uses lock to prevent concurrent access to Whisper context.
+        Includes health check and auto-recovery.
+        """
+        # Task 2.1.3 & 2.1.4: Wrap with threading lock for thread safety
+        with self._lock:
+            # Task 3.3.3 & 3.3.4: Check context health and auto-recover
+            if not self._check_context_health():
+                logger.warning("Context health check failed, attempting recovery...")
+                try:
+                    self._reinitialize_context()
+                except ModelInitError as e:
+                    raise TranscriptionError(f"Context recovery failed: {e}")
+
+            return self._call_whisper_full_unsafe(audio_data, language, audio_duration)
+
+    def _call_whisper_full_unsafe(
+        self, audio_data: np.ndarray, language: str, audio_duration: float
+    ) -> dict[str, Any]:
+        """
+        Internal method: Call whisper_full() without lock.
+
+        WARNING: This method is NOT thread-safe. Use _call_whisper_full() instead.
+        """
         try:
-            logger.debug(f"Starting Whisper inference (language={language})")
-            
-            class WhisperFullParamsPartial(ctypes.Structure):
+            logger.debug(
+                f"Starting Whisper inference (language={language}, lock_acquired=True)"
+            )
+
+            # Define WhisperFullParams structure matching whisper.cpp
+            # This structure must match the C struct layout exactly
+            class WhisperFullParams(ctypes.Structure):
                 _fields_ = [
                     ("strategy", ctypes.c_int),
                     ("n_threads", ctypes.c_int),
                     ("n_max_text_ctx", ctypes.c_int),
                     ("offset_ms", ctypes.c_int),
                     ("duration_ms", ctypes.c_int),
+                    ("translate", ctypes.c_bool),
+                    ("no_context", ctypes.c_bool),
+                    ("no_timestamps", ctypes.c_bool),
+                    ("single_segment", ctypes.c_bool),
+                    ("print_special", ctypes.c_bool),
+                    ("print_progress", ctypes.c_bool),
+                    ("print_realtime", ctypes.c_bool),
+                    ("print_timestamps", ctypes.c_bool),
+                    ("token_timestamps", ctypes.c_bool),
+                    ("_pad1", ctypes.c_byte * 3),
+                    ("thold_pt", ctypes.c_float),
+                    ("thold_ptsum", ctypes.c_float),
+                    ("max_len", ctypes.c_int),
+                    ("split_on_word", ctypes.c_bool),
+                    ("_pad2", ctypes.c_byte * 3),
+                    ("max_tokens", ctypes.c_int),
+                    ("debug_mode", ctypes.c_bool),
+                    ("_pad3", ctypes.c_byte * 3),
+                    ("audio_ctx", ctypes.c_int),
+                    ("tdrz_enable", ctypes.c_bool),
+                    ("_pad4", ctypes.c_byte * 7),
+                    ("suppress_regex", ctypes.c_char_p),
+                    ("initial_prompt", ctypes.c_char_p),
+                    ("carry_initial_prompt", ctypes.c_bool),
+                    ("_pad5", ctypes.c_byte * 7),
+                    ("prompt_tokens", ctypes.c_void_p),
+                    ("prompt_n_tokens", ctypes.c_int),
+                    ("_pad6", ctypes.c_byte * 4),
+                    ("language", ctypes.c_char_p),
+                    ("detect_language", ctypes.c_bool),
+                    ("suppress_blank", ctypes.c_bool),
+                    ("suppress_nst", ctypes.c_bool),
+                    ("_pad7", ctypes.c_byte * 5),
+                    ("temperature", ctypes.c_float),
+                    ("max_initial_ts", ctypes.c_float),
+                    ("length_penalty", ctypes.c_float),
+                    ("temperature_inc", ctypes.c_float),
+                    ("entropy_thold", ctypes.c_float),
+                    ("logprob_thold", ctypes.c_float),
+                    ("no_speech_thold", ctypes.c_float),
+                    ("greedy_best_of", ctypes.c_int),
+                    ("beam_size", ctypes.c_int),
+                    ("patience", ctypes.c_float),
+                    # Callbacks
+                    ("new_segment_callback", ctypes.c_void_p),
+                    ("new_segment_callback_user_data", ctypes.c_void_p),
+                    ("progress_callback", ctypes.c_void_p),
+                    ("progress_callback_user_data", ctypes.c_void_p),
+                    ("encoder_begin_callback", ctypes.c_void_p),
+                    ("encoder_begin_callback_user_data", ctypes.c_void_p),
+                    ("abort_callback", ctypes.c_void_p),
+                    ("abort_callback_user_data", ctypes.c_void_p),
+                    ("logits_filter_callback", ctypes.c_void_p),
+                    ("logits_filter_callback_user_data", ctypes.c_void_p),
+                    ("grammar_rules", ctypes.c_void_p),
+                    ("n_grammar_rules", ctypes.c_size_t),
+                    ("i_start_rule", ctypes.c_size_t),
+                    ("grammar_penalty", ctypes.c_float),
+                    ("_pad8", ctypes.c_byte * 4),
+                    # VAD params
+                    ("vad", ctypes.c_bool),
+                    ("_pad9", ctypes.c_byte * 7),
+                    ("vad_model_path", ctypes.c_char_p),
+                    ("vad_threshold", ctypes.c_float),
+                    ("vad_min_speech_duration_ms", ctypes.c_int),
+                    ("vad_min_silence_duration_ms", ctypes.c_int),
+                    ("vad_max_speech_duration_s", ctypes.c_float),
+                    ("vad_speech_pad_ms", ctypes.c_int),
+                    ("vad_samples_overlap", ctypes.c_float),
                 ]
-            
-            self.lib.whisper_full_default_params_by_ref.argtypes = [ctypes.c_int]
-            self.lib.whisper_full_default_params_by_ref.restype = ctypes.POINTER(WhisperFullParamsPartial)
-            
-            self.lib.whisper_full.argtypes = [
-                ctypes.c_void_p,
-                ctypes.c_void_p,
-                ctypes.POINTER(ctypes.c_float),
-                ctypes.c_int,
-            ]
+
+            # Setup function signatures
+            self.lib.whisper_full_default_params.restype = WhisperFullParams
+            self.lib.whisper_full_default_params.argtypes = [ctypes.c_int]
+
             self.lib.whisper_full.restype = ctypes.c_int
-            
-            self.lib.whisper_free_params.argtypes = [ctypes.c_void_p]
-            self.lib.whisper_free_params.restype = None
-            
+            self.lib.whisper_full.argtypes = [
+                ctypes.c_void_p,  # ctx
+                WhisperFullParams,  # params (by value)
+                ctypes.POINTER(ctypes.c_float),  # samples
+                ctypes.c_int,  # n_samples
+            ]
+
             self.lib.whisper_full_n_segments.argtypes = [ctypes.c_void_p]
             self.lib.whisper_full_n_segments.restype = ctypes.c_int
-            
-            self.lib.whisper_full_get_segment_text.argtypes = [ctypes.c_void_p, ctypes.c_int]
+
+            self.lib.whisper_full_get_segment_text.argtypes = [
+                ctypes.c_void_p,
+                ctypes.c_int,
+            ]
             self.lib.whisper_full_get_segment_text.restype = ctypes.c_char_p
-            
-            self.lib.whisper_full_get_segment_t0.argtypes = [ctypes.c_void_p, ctypes.c_int]
+
+            self.lib.whisper_full_get_segment_t0.argtypes = [
+                ctypes.c_void_p,
+                ctypes.c_int,
+            ]
             self.lib.whisper_full_get_segment_t0.restype = ctypes.c_int64
-            
-            self.lib.whisper_full_get_segment_t1.argtypes = [ctypes.c_void_p, ctypes.c_int]
+
+            self.lib.whisper_full_get_segment_t1.argtypes = [
+                ctypes.c_void_p,
+                ctypes.c_int,
+            ]
             self.lib.whisper_full_get_segment_t1.restype = ctypes.c_int64
-            
-            params_ptr = self.lib.whisper_full_default_params_by_ref(0)
-            if not params_ptr:
-                raise TranscriptionError("Failed to get default whisper params")
-            
+
+            # Get default params (strategy 0 = WHISPER_SAMPLING_GREEDY)
+            params = self.lib.whisper_full_default_params(0)
+            logger.debug("Got default whisper params")
+
+            # Explicitly disable VAD
+            params.vad = False
+            params.vad_model_path = None
+
             settings = get_settings()
             n_threads = settings.whisper_n_threads
-            
+
             if n_threads == 0:
                 cpu_count = os.cpu_count() or 4
                 n_threads = min(cpu_count, 8)
-                logger.debug(f"Auto-detected {cpu_count} CPUs, using {n_threads} threads")
+                logger.debug(
+                    f"Auto-detected {cpu_count} CPUs, using {n_threads} threads"
+                )
             else:
                 logger.debug(f"Using configured WHISPER_N_THREADS={n_threads}")
-            
-            params_ptr.contents.n_threads = n_threads
+
+            params.n_threads = n_threads
             logger.info(f"Whisper inference configured with {n_threads} threads")
-            
+
             n_samples = len(audio_data)
             audio_array = (ctypes.c_float * n_samples)(*audio_data)
-            
-            logger.debug(f"Calling whisper_full with {n_samples} samples (language={language})")
+
+            logger.debug(
+                f"Calling whisper_full with {n_samples} samples (language={language})"
+            )
             start_time = time.time()
-            
-            try:
-                result = self.lib.whisper_full(
-                    self.ctx,
-                    params_ptr,
-                    audio_array,
-                    n_samples,
-                )
-            finally:
-                self.lib.whisper_free_params(params_ptr)
-            
+
+            result = self.lib.whisper_full(
+                self.ctx,
+                params,
+                audio_array,
+                n_samples,
+            )
+
             inference_time = time.time() - start_time
-            
+
             if result != 0:
                 raise TranscriptionError(f"whisper_full returned error code: {result}")
-            
+
             n_segments = self.lib.whisper_full_n_segments(self.ctx)
-            logger.debug(f"Whisper inference completed: {n_segments} segments in {inference_time:.2f}s")
-            
+            logger.debug(
+                f"Whisper inference completed: {n_segments} segments in {inference_time:.2f}s"
+            )
+
             if n_segments == 0:
-                logger.warning("Whisper returned 0 segments - audio may be silent or invalid")
+                logger.warning(
+                    "Whisper returned 0 segments - audio may be silent or invalid"
+                )
                 return {
                     "text": "",
                     "segments": [],
                     "language": language,
                     "inference_time": inference_time,
                 }
-            
+
             segments = []
             full_text_parts = []
-            
+
             for i in range(n_segments):
                 text_ptr = self.lib.whisper_full_get_segment_text(self.ctx, i)
                 text = text_ptr.decode("utf-8") if text_ptr else ""
-                
+
                 t0 = self.lib.whisper_full_get_segment_t0(self.ctx, i)
                 t1 = self.lib.whisper_full_get_segment_t1(self.ctx, i)
-                
+
                 start_time_s = t0 / 100.0
                 end_time_s = t1 / 100.0
-                
-                segments.append({
-                    "start": start_time_s,
-                    "end": end_time_s,
-                    "text": text.strip(),
-                })
-                
+
+                segments.append(
+                    {
+                        "start": start_time_s,
+                        "end": end_time_s,
+                        "text": text.strip(),
+                    }
+                )
+
                 full_text_parts.append(text.strip())
-            
+
             full_text = " ".join(full_text_parts)
             confidence = 0.95 if n_segments > 0 else 0.0
-            
+
             logger.info(
                 f"Transcription complete: {len(full_text)} chars, "
                 f"{n_segments} segments, {inference_time:.2f}s"
             )
-            
+
             return {
                 "text": full_text,
                 "segments": segments,

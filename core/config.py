@@ -50,9 +50,25 @@ class Settings(BaseSettings):
     whisper_chunk_duration: int = Field(
         default=30, alias="WHISPER_CHUNK_DURATION"
     )  # seconds
+    # Task 4.1.1: Increased overlap from 1 to 3 seconds for better boundary handling
     whisper_chunk_overlap: int = Field(
-        default=1, alias="WHISPER_CHUNK_OVERLAP"
-    )  # seconds
+        default=3, alias="WHISPER_CHUNK_OVERLAP"
+    )  # seconds (increased from 1 for better quality)
+
+    def validate_chunk_overlap(self) -> bool:
+        """
+        Task 4.1.2: Validate overlap must be < chunk_duration/2.
+        
+        Returns:
+            True if valid, raises ValueError if invalid
+        """
+        max_overlap = self.whisper_chunk_duration / 2
+        if self.whisper_chunk_overlap >= max_overlap:
+            raise ValueError(
+                f"whisper_chunk_overlap ({self.whisper_chunk_overlap}s) must be less than "
+                f"half of whisper_chunk_duration ({self.whisper_chunk_duration}s / 2 = {max_overlap}s)"
+            )
+        return True
 
     # MinIO Configuration (for artifact download)
     minio_endpoint: str = Field(

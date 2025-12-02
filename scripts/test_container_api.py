@@ -1,0 +1,157 @@
+#!/usr/bin/env python3
+"""
+Test script to verify transcription optimizations in container.
+Run this inside the container: python3 /app/scripts/test_container_api.py
+"""
+
+import sys
+import time
+from pathlib import Path
+
+# Add app to path
+sys.path.insert(0, "/app")
+
+from core.container import bootstrap_container, get_transcribe_service
+from core.logger import logger
+
+
+def test_transcription(audio_path: str, language: str = "en", description: str = ""):
+    """Test transcription with a local audio file."""
+    print(f"\n{'='*60}")
+    print(f"TEST: {description}")
+    print(f"File: {audio_path}")
+    print(f"Language: {language}")
+    print(f"{'='*60}")
+
+    path = Path(audio_path)
+    if not path.exists():
+        print(f"❌ File not found: {audio_path}")
+        return None
+
+    # Get file size
+    size_mb = path.stat().st_size / (1024 * 1024)
+    print(f"File size: {size_mb:.2f} MB")
+
+    # Get transcriber directly
+    from interfaces.transcriber import ITranscriber
+    from core.container import Container
+
+    transcriber = Container.resolve(ITranscriber)
+
+    # Read audio file
+    with open(audio_path, "rb") as f:
+        audio_data = f.read()
+
+    print(f"Audio data size: {len(audio_data)} bytes")
+
+    # Transcribe
+    start_time = time.time()
+    try:
+        result = transcriber.transcribe(audio_data, language=language)
+        elapsed = time.time() - start_time
+
+        print(f"\n✅ SUCCESS in {elapsed:.2f}s")
+        print(f"Result length: {len(result)} chars")
+
+        # Check for [inaudible]
+        if "[inaudible]" in result.lower():
+            inaudible_count = result.lower().count("[inaudible]")
+            print(f"⚠️  WARNING: Found {inaudible_count} [inaudible] markers!")
+            if result.replace("[inaudible]", "").strip() == "":
+                print(f"❌ FAIL: Result is ONLY [inaudible] markers!")
+                return {"status": "fail", "reason": "only_inaudible", "result": result}
+        else:
+            print(f"✅ No [inaudible] markers found")
+
+        # Print preview
+        preview = result[:200] + "..." if len(result) > 200 else result
+        print(f"\nPreview:\n{preview}")
+
+        return {"status": "success", "result": result, "elapsed": elapsed}
+
+    except Exception as e:
+        elapsed = time.time() - start_time
+        print(f"\n❌ FAILED in {elapsed:.2f}s")
+        print(f"Error: {e}")
+        import traceback
+
+        traceback.print_exc()
+        return {"status": "error", "error": str(e)}
+
+
+def main():
+    print("=" * 60)
+    print("TRANSCRIPTION OPTIMIZATION VERIFICATION TEST")
+    print("=" * 60)
+
+    # Bootstrap DI container
+    print("\nInitializing DI container...")
+    bootstrap_container()
+    print("✅ DI container initialized")
+
+    # Test files
+    test_cases = [
+        # Short English audio (30s) - should use direct transcription
+        {
+            "path": "/app/scripts/test_audio/benchmark_30s.wav",
+            "language": "en",
+            "description": "Short English audio (30s) - Direct transcription",
+        },
+        # Short Vietnamese audio
+        {
+            "path": "/app/scripts/test_audio/7553444429583944980.mp3",
+            "language": "vi",
+            "description": "Short Vietnamese audio (~15s)",
+        },
+        # Medium Vietnamese audio
+        {
+            "path": "/app/scripts/test_audio/7314151385635867905.mp3",
+            "language": "vi",
+            "description": "Medium Vietnamese audio",
+        },
+        # Longer Vietnamese audio - should trigger chunking
+        {
+            "path": "/app/scripts/test_audio/7533882162861411602.mp3",
+            "language": "vi",
+            "description": "Longer Vietnamese audio - May trigger chunking",
+        },
+    ]
+
+    results = []
+    for tc in test_cases:
+        result = test_transcription(tc["path"], tc["language"], tc["description"])
+        results.append({"test": tc["description"], "result": result})
+
+    # Summary
+    print("\n" + "=" * 60)
+    print("SUMMARY")
+    print("=" * 60)
+
+    success_count = 0
+    fail_count = 0
+
+    for r in results:
+        if r["result"] is None:
+            print(f"⏭️  SKIPPED: {r['test']}")
+        elif r["result"]["status"] == "success":
+            print(f"✅ PASS: {r['test']} ({r['result']['elapsed']:.2f}s)")
+            success_count += 1
+        elif r["result"]["status"] == "fail":
+            print(f"❌ FAIL: {r['test']} - {r['result']['reason']}")
+            fail_count += 1
+        else:
+            print(f"❌ ERROR: {r['test']} - {r['result']['error']}")
+            fail_count += 1
+
+    print(f"\nTotal: {success_count} passed, {fail_count} failed")
+
+    if fail_count == 0:
+        print("\n🎉 ALL TESTS PASSED! Optimizations are working correctly.")
+        return 0
+    else:
+        print("\n⚠️  Some tests failed. Check logs for details.")
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

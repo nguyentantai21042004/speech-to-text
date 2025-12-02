@@ -70,3 +70,4 @@ Thumbs.db
 # .gemini/*
 
 *.mp3
+*_chunk*.wav

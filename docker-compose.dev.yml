@@ -5,6 +5,7 @@ services:
   # This mounts your source code so you can edit locally
   # and run in Linux container (required for .so libraries)
   api-dev:
+    platform: linux/amd64  # Force x86_64 for Whisper .so libraries
     image: python:3.12-slim-bookworm
     container_name: stt-api-dev
     restart: unless-stopped
@@ -41,6 +42,9 @@ services:
       # Whisper Library Settings (base = default, balanced performance)
       WHISPER_MODEL_SIZE: "${WHISPER_MODEL_SIZE:-base}"
       WHISPER_ARTIFACTS_DIR: "."
+      
+      # Library path for Whisper shared libraries
+      LD_LIBRARY_PATH: "/app/whisper_base_xeon:/app/whisper_small_xeon:/app/whisper_medium_xeon"
       
       # MinIO Configuration
       MINIO_ENDPOINT: "${MINIO_ENDPOINT:-http://172.16.19.115:9000}"
