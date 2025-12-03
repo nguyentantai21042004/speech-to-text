@@ -1,13 +1,13 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: stt-api
-  namespace: stt
+  name: smap-speech-to-text
+  namespace: smap
   labels:
-    app: stt-api
+    app: smap-speech-to-text
     version: v1
 spec:
-  replicas: 2  # Adjust based on load
+  replicas: 1  # Reduced to 1 pod
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -15,16 +15,12 @@ spec:
       maxUnavailable: 0  # Zero-downtime deployment
   selector:
     matchLabels:
-      app: stt-api
+      app: smap-speech-to-text
   template:
     metadata:
       labels:
-        app: stt-api
+        app: smap-speech-to-text
         version: v1
-      annotations:
-        prometheus.io/scrape: "true"
-        prometheus.io/port: "8000"
-        prometheus.io/path: "/metrics"
     spec:
       # Security Context
       securityContext:
@@ -33,40 +29,43 @@ spec:
         fsGroup: 1000
         seccompProfile:
           type: RuntimeDefault
-      
+
+      imagePullSecrets:
+        - name: harbor-secret
+
       containers:
-      - name: stt-api
-        image: your-registry/stt-api:latest  # Replace with your registry
+      - name: smap-speech-to-text
+        image: registry.tantai.dev/smap/smap-speech-to-text:251204-012144
         imagePullPolicy: Always
-        
+
         ports:
         - name: http
           containerPort: 8000
           protocol: TCP
-        
+
         # Environment Variables from ConfigMap
         envFrom:
         - configMapRef:
-            name: stt-config
-        
+            name: smap-stt-config
+
         # Sensitive Environment Variables from Secret
         env:
         - name: INTERNAL_API_KEY
           valueFrom:
             secretKeyRef:
-              name: stt-secrets
+              name: smap-stt-secrets
               key: INTERNAL_API_KEY
         - name: MINIO_ACCESS_KEY
           valueFrom:
             secretKeyRef:
-              name: stt-secrets
+              name: smap-stt-secrets
               key: MINIO_ACCESS_KEY
         - name: MINIO_SECRET_KEY
           valueFrom:
             secretKeyRef:
-              name: stt-secrets
+              name: smap-stt-secrets
               key: MINIO_SECRET_KEY
-        
+
         # Resource Limits (Optimized for Horizontal Scaling)
         # =================================================================
         # STRATEGY: "1 Core Per Pod" - Horizontal Scaling
@@ -101,7 +100,7 @@ spec:
             memory: "2Gi"     # Maximum memory (prevents OOM, allows spikes)
             cpu: "2000m"      # 2 CPU cores (burst for GC/background tasks)
             ephemeral-storage: "5Gi"  # Maximum temp storage for long audio
-        
+
         # Liveness Probe (Restart if unhealthy)
         livenessProbe:
           httpGet:
@@ -112,7 +111,7 @@ spec:
           timeoutSeconds: 10
           failureThreshold: 3
           successThreshold: 1
-        
+
         # Readiness Probe (Remove from load balancer if not ready)
         readinessProbe:
           httpGet:
@@ -123,7 +122,7 @@ spec:
           timeoutSeconds: 5
           failureThreshold: 3
           successThreshold: 1
-        
+
         # Startup Probe (For slow-starting containers)
         startupProbe:
           httpGet:
@@ -133,7 +132,7 @@ spec:
           periodSeconds: 10
           timeoutSeconds: 5
           failureThreshold: 12  # 120s total startup time
-        
+
         # Volume Mounts (new location: models/ directory)
         volumeMounts:
         - name: logs
@@ -142,7 +141,7 @@ spec:
           mountPath: /app/models/whisper_small_xeon
         - name: tmp
           mountPath: /tmp
-        
+
         # Security Context
         securityContext:
           allowPrivilegeEscalation: false
@@ -150,7 +149,7 @@ spec:
           capabilities:
             drop:
             - ALL
-      
+
       # Volumes
       volumes:
       - name: logs
@@ -158,11 +157,11 @@ spec:
           sizeLimit: 1Gi
       - name: whisper-models
         persistentVolumeClaim:
-          claimName: stt-models-pvc
+          claimName: smap-stt-models-pvc
       - name: tmp
         emptyDir:
           sizeLimit: 5Gi  # For audio chunking temp files
-      
+
       # Pod Anti-Affinity (Spread pods across nodes)
       affinity:
         podAntiAffinity:
@@ -174,74 +173,5 @@ spec:
                 - key: app
                   operator: In
                   values:
-                  - stt-api
+                  - smap-speech-to-text
               topologyKey: kubernetes.io/hostname
-      
-      # Tolerations (Optional: for dedicated nodes)
-      # tolerations:
-      # - key: "workload"
-      #   operator: "Equal"
-      #   value: "ml"
-      #   effect: "NoSchedule"
----
-# Horizontal Pod Autoscaler (Optimized for 1-Core Horizontal Scaling)
-# =================================================================
-# HPA STRATEGY (aligned with "1 core per pod" approach):
-# - CPU target 70% = scale when pod reaches 700m usage (of 1000m request)
-# - Memory target 75% = scale before OOM risk
-#
-# WHY 70% CPU TARGET:
-# - With 1 core request, 70% = 700m CPU usage
-# - Leaves 300m headroom for burst (limit is 2000m)
-# - Triggers scale-up before latency degrades
-#
-# SCALING MATH:
-# - Each pod handles ~2-3 RPS at 1 core (Base model)
-# - For 10 RPS target: need 4-5 pods
-# - minReplicas=2 ensures HA, maxReplicas=10 caps cost
-#
-# Reference: document/performance.md
-# =================================================================
-apiVersion: autoscaling/v2
-kind: HorizontalPodAutoscaler
-metadata:
-  name: stt-api-hpa
-  namespace: stt
-spec:
-  scaleTargetRef:
-    apiVersion: apps/v1
-    kind: Deployment
-    name: stt-api
-  minReplicas: 2    # Minimum for HA (spread across nodes)
-  maxReplicas: 10   # Max based on cluster capacity and cost
-  metrics:
-  - type: Resource
-    resource:
-      name: cpu
-      target:
-        type: Utilization
-        averageUtilization: 70  # Scale at 70% of 1 core (700m)
-  - type: Resource
-    resource:
-      name: memory
-      target:
-        type: Utilization
-        averageUtilization: 75  # Scale at 75% of 1Gi (~768Mi)
-  behavior:
-    scaleDown:
-      stabilizationWindowSeconds: 300  # 5 minutes cooldown (avoid flapping)
-      policies:
-      - type: Percent
-        value: 25               # Scale down 25% at a time (conservative)
-        periodSeconds: 60
-    scaleUp:
-      stabilizationWindowSeconds: 0    # Scale up immediately
-      policies:
-      - type: Percent
-        value: 100              # Double capacity if needed
-        periodSeconds: 30
-      - type: Pods
-        value: 2                # Add max 2 pods per 30s
-        periodSeconds: 30
-      selectPolicy: Max
-
