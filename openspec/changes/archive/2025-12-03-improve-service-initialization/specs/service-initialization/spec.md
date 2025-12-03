@@ -41,7 +41,7 @@ The system SHALL initialize the Whisper model at service startup rather than on 
 **And** the request SHALL complete without model loading overhead  
 **And** the response time SHALL be consistent with subsequent requests
 
-## MODIFIED Requirements
+## ADDED Requirements
 
 ### Requirement: Health Check Validation
 The system SHALL include model initialization status in health check responses.

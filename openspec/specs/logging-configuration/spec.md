@@ -1,7 +1,8 @@
-# Logging Configuration Specification
+# logging-configuration Specification
 
-## ADDED Requirements
-
+## Purpose
+TBD - created by archiving change improve-service-initialization. Update Purpose after archive.
+## Requirements
 ### Requirement: Centralized Logging Configuration
 The system SHALL provide a centralized logging configuration through `core/logger.py` that all components use for consistent, structured logging.
 
@@ -96,19 +97,3 @@ The system SHALL support fine-grained log level control for different components
 **And** boto3 logs SHALL be set to INFO level  
 **And** this SHALL reduce noise in application logs
 
-## MODIFIED Requirements
-
-### Requirement: Whisper Library Native Logs
-The system SHALL continue to capture native C library logs from Whisper.cpp and route them through Loguru.
-
-#### Scenario: Capture native stdout/stderr
-**Given** Whisper C library writes to stdout/stderr  
-**When** transcription is performed  
-**Then** the system SHALL capture native output using `capture_native_logs()` context manager  
-**And** the system SHALL route captured output through Loguru  
-**And** the system SHALL tag logs with source identifier (e.g., "whisper_load", "whisper_init")  
-**And** the system SHALL use appropriate log level (debug for initialization, info for inference)
-
-## REMOVED Requirements
-
-None - this change only adds new logging capabilities without removing existing functionality.

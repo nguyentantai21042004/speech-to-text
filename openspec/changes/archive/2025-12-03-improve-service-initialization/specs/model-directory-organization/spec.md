@@ -79,7 +79,7 @@ The system SHALL download Whisper artifacts to the configured models directory.
 **And** the script SHALL verify all required `.so` and `.bin` files exist  
 **And** the script SHALL report success or missing files
 
-## MODIFIED Requirements
+## ADDED Requirements (continued)
 
 ### Requirement: Project Structure Documentation
 The system documentation SHALL reflect the new model directory organization.
@@ -98,6 +98,3 @@ The system documentation SHALL reflect the new model directory organization.
 **And** `.gitignore` SHALL exclude model files (*.so, *.bin) in models directory  
 **And** the `models/` directory itself SHALL be tracked (with .gitkeep or similar)
 
-## REMOVED Requirements
-
-None - this change only reorganizes existing functionality without removing features.
