@@ -16,7 +16,7 @@ chmod +x /app/scripts/entrypoint.sh || true
 
 echo "=== Checking model artifacts ==="
 MODEL_SIZE=${WHISPER_MODEL_SIZE:-small}
-MODEL_DIR="/app/whisper_${MODEL_SIZE}_xeon"
+MODEL_DIR="/app/models/whisper_${MODEL_SIZE}_xeon"
 MODEL_FILE="$MODEL_DIR/ggml-${MODEL_SIZE}-q5_1.bin"
 
 echo "Model size: $MODEL_SIZE"
@@ -25,22 +25,18 @@ echo "Model file: $MODEL_FILE"
 
 # Check if model file exists (not just directory)
 if [ ! -f "$MODEL_FILE" ]; then
-  echo "⬇️  Model file not found, downloading artifacts..."
+  echo "Model file not found, downloading artifacts..."
   
-  # Install boto3 if not present
-  echo "Installing boto3 for MinIO download..."
-  pip install --no-cache-dir boto3
-  
-  # Download artifacts
-  python3 /app/scripts/download_whisper_artifacts.py "$MODEL_SIZE"
+  # Download artifacts using uv run (ensures dependencies are available)
+  uv run python /app/scripts/download_whisper_artifacts.py "$MODEL_SIZE"
   
   if [ ! -f "$MODEL_FILE" ]; then
-    echo "❌ Failed to download model file"
+    echo "Failed to download model file"
     exit 1
   fi
-  echo "✅ Model artifacts downloaded successfully"
+  echo "Model artifacts downloaded successfully"
 else
-  echo "✅ Model file exists"
+  echo "Model file exists"
 fi
 
 # Verify required library files
@@ -54,10 +50,10 @@ REQUIRED_FILES=(
 
 for file in "${REQUIRED_FILES[@]}"; do
   if [ ! -f "$file" ]; then
-    echo "❌ Missing required file: $file"
+    echo "Missing required file: $file"
     exit 1
   else
-    echo "✅ Found: $(basename $file)"
+    echo "Found: $(basename $file)"
   fi
 done
 

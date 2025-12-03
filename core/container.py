@@ -125,7 +125,7 @@ def bootstrap_container() -> None:
 
         # Import implementations
         from infrastructure.whisper.library_adapter import get_whisper_library_adapter
-        from infrastructure.http.audio_downloader import get_audio_downloader
+        from infrastructure.minio.audio_downloader import get_minio_audio_downloader
 
         # Import services
         from services.transcription import TranscribeService
@@ -136,9 +136,10 @@ def bootstrap_container() -> None:
         Container.register_factory(ITranscriber, get_whisper_library_adapter)
         logger.info("Registered ITranscriber -> WhisperLibraryAdapter (factory)")
 
-        # Register IAudioDownloader -> HttpAudioDownloader (singleton via factory)
-        Container.register_factory(IAudioDownloader, get_audio_downloader)
-        logger.info("Registered IAudioDownloader -> HttpAudioDownloader (factory)")
+        # Register IAudioDownloader -> MinioAudioDownloader (singleton via factory)
+        # Supports both minio:// and http:// URLs
+        Container.register_factory(IAudioDownloader, get_minio_audio_downloader)
+        logger.info("Registered IAudioDownloader -> MinioAudioDownloader (factory)")
 
         # Register TranscribeService with injected dependencies
         def create_transcribe_service() -> TranscribeService:

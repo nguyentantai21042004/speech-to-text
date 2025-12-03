@@ -6,35 +6,35 @@
 help:
 	@echo "Available commands (Managed by uv):"
 	@echo ""
-	@echo "📦 DEPENDENCIES:"
+	@echo "DEPENDENCIES:"
 	@echo "  make install                 - Install dependencies (Sync environment)"
 	@echo "  make dev-install             - Install all dependencies including dev tools"
 	@echo "  make upgrade                 - Upgrade all packages in lock file"
 	@echo ""
-	@echo "🚀 RUN SERVICES:"
+	@echo "RUN SERVICES:"
 	@echo "  make run-api                 - Run API service locally"
 	@echo ""
-	@echo "📥 WHISPER ARTIFACTS (Dynamic Model Loading):"
+	@echo "WHISPER ARTIFACTS (Dynamic Model Loading):"
 	@echo "  make setup-artifacts         - Download Whisper library artifacts (default: small)"
 	@echo "  make setup-artifacts-small   - Download small model artifacts"
 	@echo "  make setup-artifacts-medium  - Download medium model artifacts"
 	@echo ""
-	@echo "🧪 TESTING:"
+	@echo "TESTING:"
 	@echo "  make test                    - Run all tests"
 	@echo "  make test-library            - Test Whisper library adapter"
 	@echo "  make test-integration        - Test model switching"
 	@echo ""
-	@echo "🐳 DOCKER:"
+	@echo "DOCKER:"
 	@echo "  make docker-build            - Build Docker images"
 	@echo "  make docker-up               - Start all services"
 	@echo "  make docker-down             - Stop all services"
 	@echo "  make docker-logs             - View logs"
 	@echo ""
-	@echo "🧹 CLEANUP:"
+	@echo "CLEANUP:"
 	@echo "  make clean                   - Clean up compiled files and caches"
 	@echo "  make clean-old               - Remove old/unused files"
 	@echo ""
-	@echo "✨ CODE QUALITY:"
+	@echo "CODE QUALITY:"
 	@echo "  make format                  - Format code (black)"
 	@echo "  make lint                    - Lint code (flake8)"
 
@@ -120,15 +120,15 @@ setup-whisper-custom:
 # ==============================================================================
 # Download Whisper library artifacts from MinIO
 setup-artifacts:
-	@echo "📦 Downloading Whisper library artifacts (default: small)..."
+	@echo "Downloading Whisper library artifacts (default: small)..."
 	PYTHONPATH=. uv run python scripts/download_whisper_artifacts.py small
 
 setup-artifacts-small:
-	@echo "📦 Downloading SMALL model artifacts..."
+	@echo "Downloading SMALL model artifacts..."
 	PYTHONPATH=. uv run python scripts/download_whisper_artifacts.py small
 
 setup-artifacts-medium:
-	@echo "📦 Downloading MEDIUM model artifacts..."
+	@echo "Downloading MEDIUM model artifacts..."
 	PYTHONPATH=. uv run python scripts/download_whisper_artifacts.py medium
 
 # ==============================================================================
@@ -153,10 +153,36 @@ docker-clean:
 	docker-compose down -v
 
 # ==============================================================================
+# DEV DOCKER (Optimized for fast restart)
+# ==============================================================================
+dev-build:
+	@echo "Building dev image (one-time, caches deps)..."
+	docker-compose -f docker-compose.dev.yml build
+
+dev-up:
+	@echo "Starting dev container (detached)..."
+	docker-compose -f docker-compose.dev.yml up -d
+
+dev-down:
+	docker-compose -f docker-compose.dev.yml down
+
+dev-logs:
+	docker-compose -f docker-compose.dev.yml logs -f
+
+dev-restart:
+	@echo "Restarting dev container (fast)..."
+	docker-compose -f docker-compose.dev.yml restart
+
+dev-rebuild:
+	@echo "Rebuilding dev image (use when deps change)..."
+	docker-compose -f docker-compose.dev.yml build --no-cache
+	docker-compose -f docker-compose.dev.yml up -d
+
+# ==============================================================================
 # CODE QUALITY & TESTING
 # ==============================================================================
 clean:
-	@echo "🧹 Cleaning up compiled files and caches..."
+	@echo "Cleaning up compiled files and caches..."
 	find . -type d -name "__pycache__" -exec rm -rf {} +
 	find . -type f -name "*.pyc" -delete
 	find . -type f -name "*.pyo" -delete
@@ -170,32 +196,32 @@ clean:
 	uv cache clean
 
 clean-old:
-	@echo "🧹 Removing old/unused files and directories..."
+	@echo "Removing old/unused files and directories..."
 	@echo "Removing backup files..."
 	find . -name "*.bak" -type f -delete
 	find . -name "*~" -type f -delete
 	@echo "Removing old __init__.py.bak files..."
 	find . -name "__init__.py.bak" -type f -delete
-	@echo "✅ Cleanup complete!"
+	@echo "Cleanup complete!"
 
 test:
-	@echo "🧪 Running all tests..."
+	@echo "Running all tests..."
 	PYTHONPATH=. uv run pytest -v
 
 test-library:
-	@echo "🧪 Testing Whisper Library Adapter..."
+	@echo "Testing Whisper Library Adapter..."
 	PYTHONPATH=. uv run pytest tests/test_whisper_library.py -v
 
 test-integration:
-	@echo "🧪 Testing Model Switching Integration..."
+	@echo "Testing Model Switching Integration..."
 	PYTHONPATH=. uv run pytest tests/test_model_switching.py -v
 
 test-small:
-	@echo "🧪 Testing with SMALL model..."
+	@echo "Testing with SMALL model..."
 	WHISPER_MODEL_SIZE=small PYTHONPATH=. uv run pytest tests/test_model_switching.py -v
 
 test-medium:
-	@echo "🧪 Testing with MEDIUM model..."
+	@echo "Testing with MEDIUM model..."
 	WHISPER_MODEL_SIZE=medium PYTHONPATH=. uv run pytest tests/test_model_switching.py -v
 
 format:

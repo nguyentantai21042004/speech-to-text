@@ -105,12 +105,13 @@ COPY --from=builder /app/.venv /app/.venv
 
 # Copy source code (only required modules for production)
 # Note: models/ binary files excluded - downloaded at runtime via entrypoint
-# Note: infrastructure/, interfaces/ excluded - not used in production
 # Note: tests/, document/, openspec/ excluded via .dockerignore
 COPY cmd /app/cmd
 COPY core /app/core
 COPY internal /app/internal
 COPY services /app/services
+COPY infrastructure /app/infrastructure
+COPY interfaces /app/interfaces
 COPY models/__init__.py /app/models/__init__.py
 COPY models/schemas.py /app/models/schemas.py
 COPY whisper /app/whisper

@@ -89,10 +89,10 @@ class TranscribeService:
 
     def _get_default_audio_downloader(self) -> IAudioDownloader:
         """Get default audio downloader from infrastructure layer."""
-        from infrastructure.http.audio_downloader import get_audio_downloader
+        from infrastructure.minio.audio_downloader import get_minio_audio_downloader
 
-        logger.info("Using HttpAudioDownloader")
-        return get_audio_downloader()
+        logger.info("Using MinioAudioDownloader (supports minio:// and http:// URLs)")
+        return get_minio_audio_downloader()
 
     async def transcribe_from_url(
         self, audio_url: str, language: Optional[str] = None
@@ -113,7 +113,10 @@ class TranscribeService:
             ValueError: If download fails or file too large
         """
         file_id = str(uuid.uuid4())
-        temp_file_path = self.temp_dir / f"{file_id}.tmp"
+        # Extract extension from URL (before query params) to help ffprobe detect format
+        url_path = audio_url.split("?")[0]
+        ext = Path(url_path).suffix or ".tmp"
+        temp_file_path = self.temp_dir / f"{file_id}{ext}"
 
         try:
             logger.info(f"Processing transcription request for URL: {audio_url}")

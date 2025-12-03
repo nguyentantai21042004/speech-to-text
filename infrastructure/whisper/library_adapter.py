@@ -243,8 +243,16 @@ class WhisperLibraryAdapter(ITranscriber):
                 raise TranscriptionError(f"Audio file not found: {audio_path}")
 
             settings = get_settings()
-            duration = self.get_audio_duration(audio_path)
-            logger.info(f"Audio duration: {duration:.2f}s")
+
+            # Try to get duration, fallback to direct transcription if ffprobe fails
+            duration = 0.0
+            try:
+                duration = self.get_audio_duration(audio_path)
+                logger.info(f"Audio duration: {duration:.2f}s")
+            except TranscriptionError as e:
+                logger.warning(
+                    f"Could not detect audio duration: {e}. Using direct transcription."
+                )
 
             if (
                 settings.whisper_chunk_enabled
@@ -282,21 +290,47 @@ class WhisperLibraryAdapter(ITranscriber):
             cmd = [
                 "ffprobe",
                 "-v",
-                "quiet",
+                "error",  # Show errors only
                 "-print_format",
                 "json",
                 "-show_format",
+                "-show_streams",  # Also show streams for better detection
+                "-i",  # Explicit input flag
                 audio_path,
             ]
 
-            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+            result = subprocess.run(
+                cmd, capture_output=True, text=True, timeout=10  # Add timeout
+            )
+
+            if result.returncode != 0:
+                error_msg = result.stderr.strip() or "Unknown ffprobe error"
+                raise TranscriptionError(f"ffprobe failed: {error_msg}")
+
+            if not result.stdout.strip():
+                raise TranscriptionError("ffprobe returned empty output")
+
             data = json.loads(result.stdout)
 
-            duration = float(data["format"]["duration"])
+            # Try format duration first, then stream duration
+            duration = None
+            if "format" in data and "duration" in data["format"]:
+                duration = float(data["format"]["duration"])
+            elif "streams" in data and data["streams"]:
+                for stream in data["streams"]:
+                    if "duration" in stream:
+                        duration = float(stream["duration"])
+                        break
+
+            if duration is None:
+                raise TranscriptionError("No duration found in ffprobe output")
+
             return duration
 
+        except subprocess.TimeoutExpired:
+            raise TranscriptionError("ffprobe timed out after 10s")
         except subprocess.CalledProcessError as e:
-            raise TranscriptionError(f"ffprobe failed: {e.stderr}")
+            raise TranscriptionError(f"ffprobe failed: {e.stderr or 'Unknown error'}")
         except (KeyError, ValueError, json.JSONDecodeError) as e:
             raise TranscriptionError(f"Failed to parse ffprobe output: {e}")
 

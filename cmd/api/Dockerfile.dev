@@ -1,0 +1,27 @@
+FROM python:3.12-slim-bookworm
+
+# Install system dependencies (cached in image layer)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg \
+    wget \
+    libgomp1 \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install uv (cached in image layer)
+RUN pip install --no-cache-dir uv
+
+WORKDIR /app
+
+# Copy only dependency files first (for better caching)
+COPY pyproject.toml uv.lock ./
+
+# Install Python dependencies (cached unless pyproject.toml/uv.lock changes)
+RUN uv sync --frozen
+
+# Set environment
+ENV PYTHONPATH=/app
+ENV PYTHONUNBUFFERED=1
+
+# Entrypoint will use mounted script from /app/scripts/
+ENTRYPOINT ["/bin/bash", "/app/scripts/dev-entrypoint.sh"]

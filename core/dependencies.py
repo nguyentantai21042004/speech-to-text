@@ -6,7 +6,6 @@ This module provides:
 - FastAPI dependency injection functions for routes
 """
 
-import os
 import shutil
 from pathlib import Path
 from typing import Tuple, Optional
@@ -64,48 +63,20 @@ def validate_dependencies(check_ffmpeg: bool = True) -> None:
 
         logger.info(f"All dependencies validated: ffmpeg/ffprobe={ffmpeg_path}")
 
-    # Check Whisper executable (optional - warn only, don't fail)
+    # Check Whisper library artifacts (optional - warn only, don't fail)
     settings = get_settings()
-    whisper_path = Path(settings.whisper_executable)
+    model_size = settings.whisper_model_size
+    artifacts_dir = Path(settings.whisper_artifacts_dir)
+    model_dir = artifacts_dir / f"whisper_{model_size}_xeon"
+    model_file = model_dir / f"ggml-{model_size}-q5_1.bin"
 
-    if not whisper_path.is_absolute():
-        whisper_path = whisper_path.resolve()
-
-    if whisper_path.exists() and whisper_path.is_file():
-        if os.access(whisper_path, os.X_OK):
-            logger.info(f"Whisper executable found: {whisper_path}")
-        else:
-            logger.warning(
-                f"Whisper executable exists but not executable: {whisper_path}"
-            )
+    if model_file.exists():
+        logger.info(f"Whisper model found: {model_file}")
     else:
-        alternative_paths = []
-
-        found_alternative = None
-        for alt_path in alternative_paths:
-            alt_resolved = (
-                alt_path.resolve() if not alt_path.is_absolute() else alt_path
-            )
-            if (
-                alt_resolved.exists()
-                and alt_resolved.is_file()
-                and os.access(alt_resolved, os.X_OK)
-            ):
-                found_alternative = alt_resolved
-                break
-
-        if found_alternative:
-            logger.warning(
-                f"Whisper executable not found at configured path: {settings.whisper_executable}, "
-                f"but found at: {found_alternative}. "
-                f"Update .env: WHISPER_EXECUTABLE={found_alternative}"
-            )
-        else:
-            logger.warning(
-                f"Whisper executable not found: {settings.whisper_executable}. "
-                "Transcription will fail at runtime. "
-                "Build whisper.cpp or set WHISPER_EXECUTABLE environment variable to correct path."
-            )
+        logger.warning(
+            f"Whisper model not found: {model_file}. "
+            f"Run: make setup-artifacts or download will happen on first request."
+        )
 
     logger.info("System dependencies check passed")
 

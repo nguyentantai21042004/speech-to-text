@@ -7,7 +7,7 @@ Uses dependency injection for TranscribeService.
 import os
 from pathlib import Path
 from fastapi import APIRouter, HTTPException, status, Depends
-from pydantic import BaseModel, HttpUrl, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional
 import asyncio
 
@@ -21,14 +21,24 @@ router = APIRouter()
 
 
 class TranscribeRequest(BaseModel):
-    """Request model for transcription from presigned URL."""
+    """Request model for transcription from URL."""
 
-    media_url: HttpUrl = Field(
-        ..., description="Presigned URL to audio/video file (e.g., MinIO)"
+    media_url: str = Field(
+        ..., description="URL to audio/video file. Supports: http://, https://, minio://bucket/path"
     )
     language: Optional[str] = Field(
         default="vi", description="Language hint for transcription (e.g., 'vi', 'en')"
     )
+
+    @field_validator("media_url")
+    @classmethod
+    def validate_url(cls, v: str) -> str:
+        """Validate URL scheme (http, https, or minio)."""
+        if not v:
+            raise ValueError("media_url cannot be empty")
+        if not v.startswith(("http://", "https://", "minio://")):
+            raise ValueError("media_url must start with http://, https://, or minio://")
+        return v
 
 
 class TranscribeResponse(BaseModel):
@@ -78,8 +88,8 @@ async def transcribe(
             f"Transcription request from authenticated client for language={request.language}"
         )
 
-        # Convert HttpUrl to string
-        url_str = str(request.media_url)
+        # URL is already a string after validation
+        url_str = request.media_url
 
         # Call transcription service with timeout (service is injected via DI)
         result = await service.transcribe_from_url(
@@ -115,7 +125,6 @@ async def transcribe(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=error_msg)
     except Exception as e:
         logger.error(f"Transcription error: {e}")
-        logger.exception("Exception details:")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Internal server error: {str(e)}",

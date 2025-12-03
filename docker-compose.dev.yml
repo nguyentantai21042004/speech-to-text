@@ -1,28 +1,34 @@
 services:
   # ========================================
-  # Development API Service (for macOS)
+  # Development API Service (Optimized for Fast Restart)
   # ========================================
-  # This mounts your source code so you can edit locally
-  # and run in Linux container (required for .so libraries)
+  # Build once with Dockerfile.dev, then restart is instant
+  # Only model download on first run (cached in volume)
   api-dev:
+    build:
+      context: .
+      dockerfile: cmd/api/Dockerfile.dev
     platform: linux/amd64  # Force x86_64 for Whisper .so libraries
-    image: python:3.12-slim-bookworm
     container_name: stt-api-dev
     restart: unless-stopped
     ports:
       - "8000:8000"
     working_dir: /app
     
-    # Mount entire source directory
+    # Mount source code for hot-reload (not entire project)
     volumes:
-      - .:/app
-      - whisper_models:/app/whisper/models
-      # Cache downloaded Whisper library artifacts (new location: models/)
+      - ./cmd:/app/cmd
+      - ./core:/app/core
+      - ./services:/app/services
+      - ./internal:/app/internal
+      - ./interfaces:/app/interfaces
+      - ./infrastructure:/app/infrastructure
+      - ./scripts:/app/scripts
+      - ./logs:/app/logs
+      # Cache model artifacts (persist across restarts)
       - whisper_library_base:/app/models/whisper_base_xeon
       - whisper_library_small:/app/models/whisper_small_xeon
       - whisper_library_medium:/app/models/whisper_medium_xeon
-      # Cache pip packages
-      - pip_cache:/root/.cache/pip
     
     environment:
       # Application
@@ -34,37 +40,30 @@ services:
       # API
       API_HOST: "0.0.0.0"
       API_PORT: "8000"
-      API_RELOAD: "True"
-      API_WORKERS: "1"
       MAX_UPLOAD_SIZE_MB: "500"
 
       # Storage
       TEMP_DIR: "/tmp/stt_processing"
 
-      # Whisper Library Settings (base = default, balanced performance)
+      # Whisper Library Settings
       WHISPER_MODEL_SIZE: "${WHISPER_MODEL_SIZE:-base}"
-      # Model directory: models/ (artifacts in models/whisper_base_xeon/, etc.)
       WHISPER_ARTIFACTS_DIR: "models"
-      
-      # Library path for Whisper shared libraries (new location: models/)
       LD_LIBRARY_PATH: "/app/models/whisper_base_xeon:/app/models/whisper_small_xeon:/app/models/whisper_medium_xeon"
       
       # MinIO Configuration
-      MINIO_ENDPOINT: "${MINIO_ENDPOINT:-http://localhost:9000}"
-      MINIO_ACCESS_KEY: "${MINIO_ACCESS_KEY:-minioadmin}"
-      MINIO_SECRET_KEY: "${MINIO_SECRET_KEY:-CHANGE_ME_IN_PRODUCTION}"
+      MINIO_ENDPOINT: "${MINIO_ENDPOINT:-http://172.16.19.115:9000}"
+      MINIO_ACCESS_KEY: "${MINIO_ACCESS_KEY:-smap}"
+      MINIO_SECRET_KEY: "${MINIO_SECRET_KEY:-hcmut2025}"
 
       # Whisper Settings
-      WHISPER_EXECUTABLE: "/app/whisper/bin/whisper-cli"
-      WHISPER_MODELS_DIR: "/app/whisper/models"
       WHISPER_LANGUAGE: "vi"
       WHISPER_MODEL: "base"
-      WHISPER_N_THREADS: "${WHISPER_N_THREADS:-0}"  # 0=auto (min(cpu_count, 8)), or set explicit value
+      WHISPER_N_THREADS: "${WHISPER_N_THREADS:-0}"
 
-      # Chunking Configuration (for long audio processing)
+      # Chunking
       WHISPER_CHUNK_ENABLED: "${WHISPER_CHUNK_ENABLED:-true}"
-      WHISPER_CHUNK_DURATION: "${WHISPER_CHUNK_DURATION:-30}"  # seconds
-      WHISPER_CHUNK_OVERLAP: "${WHISPER_CHUNK_OVERLAP:-1}"     # seconds
+      WHISPER_CHUNK_DURATION: "${WHISPER_CHUNK_DURATION:-30}"
+      WHISPER_CHUNK_OVERLAP: "${WHISPER_CHUNK_OVERLAP:-1}"
 
       # Whisper Flags
       WHISPER_MAX_CONTEXT: "0"
@@ -77,21 +76,13 @@ services:
       LOG_LEVEL: "INFO"
       LOG_FILE: "logs/stt.log"
 
-      # API Security & Timeouts
+      # API Security
       INTERNAL_API_KEY: "${INTERNAL_API_KEY:-your-api-key-here}"
       TRANSCRIBE_TIMEOUT_SECONDS: "90"
-
-      # Python
-      PYTHONPATH: "/app"
-      PYTHONUNBUFFERED: "1"
-    
-    # Run startup script
-    command: ["/bin/bash", "/app/scripts/dev-startup.sh"]
     
     networks:
       - stt-network
     
-    # Resource limits for benchmarking
     deploy:
       resources:
         limits:
@@ -104,20 +95,16 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 60s
+      start_period: 30s  # Faster startup now
 
 networks:
   stt-network:
     driver: bridge
 
 volumes:
-  whisper_models:
-    driver: local
   whisper_library_base:
     driver: local
   whisper_library_small:
     driver: local
   whisper_library_medium:
-    driver: local
-  pip_cache:
     driver: local
