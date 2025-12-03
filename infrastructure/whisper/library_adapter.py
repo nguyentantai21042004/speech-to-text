@@ -20,7 +20,13 @@ import numpy as np  # type: ignore
 
 from core.config import get_settings
 from core.logger import logger
-from core.errors import TranscriptionError
+from core.errors import (
+    TranscriptionError,
+    WhisperLibraryError,
+    LibraryLoadError,
+    ModelInitError,
+)
+from core.constants import WHISPER_MODEL_CONFIGS, MIN_CHUNK_DURATION
 from interfaces.transcriber import ITranscriber
 
 
@@ -93,48 +99,11 @@ def capture_native_logs(source: str, level: str = "info"):
         yield
 
 
-class WhisperLibraryError(Exception):
-    """Base exception for Whisper library errors"""
+# Note: WhisperLibraryError, LibraryLoadError, ModelInitError imported from core.errors
+# Note: MIN_CHUNK_DURATION, WHISPER_MODEL_CONFIGS imported from core.constants
 
-    pass
-
-
-class LibraryLoadError(WhisperLibraryError):
-    """Failed to load .so files"""
-
-    pass
-
-
-class ModelInitError(WhisperLibraryError):
-    """Failed to initialize Whisper context"""
-
-    pass
-
-
-# Task 3.2.1: Minimum chunk duration constant
-MIN_CHUNK_DURATION = 2.0  # seconds - chunks shorter than this will be skipped or merged
-
-# Model configuration mapping
-MODEL_CONFIGS = {
-    "base": {
-        "dir": "whisper_base_xeon",
-        "model": "ggml-base-q5_1.bin",
-        "size_mb": 60,
-        "ram_mb": 1000,
-    },
-    "small": {
-        "dir": "whisper_small_xeon",
-        "model": "ggml-small-q5_1.bin",
-        "size_mb": 181,
-        "ram_mb": 500,
-    },
-    "medium": {
-        "dir": "whisper_medium_xeon",
-        "model": "ggml-medium-q5_1.bin",
-        "size_mb": 1500,
-        "ram_mb": 2000,
-    },
-}
+# Alias for backward compatibility within this module
+MODEL_CONFIGS = WHISPER_MODEL_CONFIGS
 
 
 class WhisperLibraryAdapter(ITranscriber):

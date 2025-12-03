@@ -11,10 +11,14 @@ import json
 
 from core.config import get_settings
 from core.logger import logger
+from core.constants import WHISPER_DOWNLOAD_CONFIGS
 from minio import Minio  # type: ignore
 from minio.error import S3Error  # type: ignore
 
 settings = get_settings()
+
+# Alias for backward compatibility within this module
+MODEL_CONFIGS = WHISPER_DOWNLOAD_CONFIGS
 
 
 def get_minio_client_for_models() -> Minio:
@@ -33,39 +37,7 @@ def get_minio_client_for_models() -> Minio:
     )
 
 
-# Model configurations with checksums (MD5)
-MODEL_CONFIGS = {
-    "tiny": {
-        "filename": "ggml-tiny.bin",
-        "minio_path": "models/ggml-tiny.bin",
-        "size_mb": 75,
-        "md5": None,
-    },
-    "base": {
-        "filename": "ggml-base.bin",
-        "minio_path": "models/ggml-base.bin",
-        "size_mb": 142,
-        "md5": None,
-    },
-    "small": {
-        "filename": "ggml-small.bin",
-        "minio_path": "models/ggml-small.bin",
-        "size_mb": 466,
-        "md5": None,
-    },
-    "medium": {
-        "filename": "ggml-medium.bin",
-        "minio_path": "models/ggml-medium.bin",
-        "size_mb": 1500,
-        "md5": None,
-    },
-    "large": {
-        "filename": "ggml-large.bin",
-        "minio_path": "models/ggml-large.bin",
-        "size_mb": 2900,
-        "md5": None,
-    },
-}
+# Note: MODEL_CONFIGS imported from core.constants as WHISPER_DOWNLOAD_CONFIGS
 
 
 class ModelDownloader:

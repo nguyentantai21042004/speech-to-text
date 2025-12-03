@@ -9,12 +9,8 @@ available in the test environment, so we test configuration and validation.
 import pytest
 from unittest.mock import MagicMock, patch
 
-from infrastructure.whisper.library_adapter import (
-    MODEL_CONFIGS,
-    WhisperLibraryError,
-    LibraryLoadError,
-    ModelInitError,
-)
+from infrastructure.whisper.library_adapter import MODEL_CONFIGS
+from core.errors import WhisperLibraryError, LibraryLoadError, ModelInitError
 
 
 class TestModelConfigs:

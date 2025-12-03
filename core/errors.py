@@ -70,3 +70,43 @@ class TranscriptionError(PermanentError):
     """General transcription error (audio loading, inference failure, etc.)."""
 
     pass
+
+
+# =============================================================================
+# Whisper Library Errors
+# =============================================================================
+
+
+class WhisperLibraryError(Exception):
+    """Base exception for Whisper library errors."""
+
+    pass
+
+
+class LibraryLoadError(WhisperLibraryError):
+    """Failed to load .so files."""
+
+    pass
+
+
+class ModelInitError(WhisperLibraryError):
+    """Failed to initialize Whisper context."""
+
+    pass
+
+
+# =============================================================================
+# Audio Processing Errors
+# =============================================================================
+
+
+class AudioFileNotFoundError(PermanentError):
+    """Audio file not found at specified path."""
+
+    pass
+
+
+class ChunkProcessingError(TransientError):
+    """Error processing audio chunk during transcription."""
+
+    pass

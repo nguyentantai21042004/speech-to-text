@@ -11,23 +11,32 @@ import httpx  # type: ignore
 
 from core.config import get_settings
 from core.logger import logger
+from core.constants import (
+    HTTP_MAX_KEEPALIVE_CONNECTIONS,
+    HTTP_MAX_CONNECTIONS,
+    HTTP_KEEPALIVE_EXPIRY,
+    HTTP_CONNECT_TIMEOUT,
+    HTTP_READ_TIMEOUT,
+    HTTP_WRITE_TIMEOUT,
+    HTTP_POOL_TIMEOUT,
+)
 from interfaces.audio_downloader import IAudioDownloader
 
 
 # Connection pool limits for production performance
 # These are shared across all requests to reuse TCP connections
 HTTP_LIMITS = httpx.Limits(
-    max_keepalive_connections=10,  # Keep 10 connections alive
-    max_connections=20,  # Max 20 concurrent connections
-    keepalive_expiry=30.0,  # Keep connections alive for 30s
+    max_keepalive_connections=HTTP_MAX_KEEPALIVE_CONNECTIONS,
+    max_connections=HTTP_MAX_CONNECTIONS,
+    keepalive_expiry=HTTP_KEEPALIVE_EXPIRY,
 )
 
 # Timeout configuration for audio downloads
 HTTP_TIMEOUT = httpx.Timeout(
-    connect=10.0,  # 10s to establish connection
-    read=60.0,  # 60s to read response (large files)
-    write=10.0,  # 10s to write request
-    pool=5.0,  # 5s to acquire connection from pool
+    connect=HTTP_CONNECT_TIMEOUT,
+    read=HTTP_READ_TIMEOUT,
+    write=HTTP_WRITE_TIMEOUT,
+    pool=HTTP_POOL_TIMEOUT,
 )
 
 
