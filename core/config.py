@@ -82,6 +82,12 @@ class Settings(BaseSettings):
     # Logging
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
     log_file: str = Field(default="logs/stt.log", alias="LOG_FILE")
+    # Log format: "console" (colored, human-readable) or "json" (for log aggregation)
+    log_format: str = Field(default="console", alias="LOG_FORMAT")
+    # Enable/disable file logging (logs/app.log and logs/error.log)
+    log_file_enabled: bool = Field(default=True, alias="LOG_FILE_ENABLED")
+    # Log level for standalone scripts (download_whisper_artifacts.py, benchmark.py, etc.)
+    script_log_level: str = Field(default="INFO", alias="SCRIPT_LOG_LEVEL")
 
     # API Security
     internal_api_key: str = Field(

@@ -14,7 +14,7 @@ T = TypeVar("T")
 class Container:
     """
     Simple Dependency Injection Container.
-    
+
     Supports:
     - Singleton instances (register)
     - Factory functions (register_factory)
@@ -30,20 +30,22 @@ class Container:
     def register(cls, interface: Type[T], instance: Any) -> None:
         """
         Register a singleton instance for an interface.
-        
+
         Args:
             interface: The interface type (e.g., ITranscriber)
             instance: The implementation instance
         """
         cls._instances[interface] = instance
-        logger.debug(f"Registered singleton: {interface.__name__} -> {instance.__class__.__name__}")
+        logger.debug(
+            f"Registered singleton: {interface.__name__} -> {instance.__class__.__name__}"
+        )
 
     @classmethod
     def register_factory(cls, interface: Type[T], factory: Callable[[], T]) -> None:
         """
         Register a factory function for an interface.
         Factory is called each time resolve() is called.
-        
+
         Args:
             interface: The interface type
             factory: Factory function that returns an implementation
@@ -55,13 +57,13 @@ class Container:
     def resolve(cls, interface: Type[T]) -> T:
         """
         Resolve an interface to its implementation.
-        
+
         Args:
             interface: The interface type to resolve
-            
+
         Returns:
             The registered implementation
-            
+
         Raises:
             KeyError: If no implementation is registered for the interface
         """
@@ -75,10 +77,10 @@ class Container:
     def is_registered(cls, interface: Type[T]) -> bool:
         """
         Check if an interface has a registered implementation.
-        
+
         Args:
             interface: The interface type to check
-            
+
         Returns:
             True if registered, False otherwise
         """
@@ -107,93 +109,116 @@ class Container:
 def bootstrap_container() -> None:
     """
     Initialize the dependency injection container.
-    
+
     Registers all interface implementations:
     - ITranscriber -> WhisperLibraryAdapter
     - IAudioDownloader -> HttpAudioDownloader
     - TranscribeService -> TranscribeService (with injected dependencies)
+
+    This function is idempotent - calling it multiple times has no effect
+    after the first successful initialization.
     """
     if Container.is_initialized():
-        logger.debug("Container already initialized, skipping bootstrap")
+        logger.debug("Container already initialized, skipping bootstrap (idempotent)")
         return
 
     logger.info("Bootstrapping dependency injection container...")
 
-    # Import interfaces
-    from interfaces.transcriber import ITranscriber
-    from interfaces.audio_downloader import IAudioDownloader
+    try:
+        # Step 1: Import interfaces
+        logger.debug("Step 1/4: Importing interfaces...")
+        from interfaces.transcriber import ITranscriber
+        from interfaces.audio_downloader import IAudioDownloader
 
-    # Import implementations
-    from infrastructure.whisper.library_adapter import get_whisper_library_adapter
-    from infrastructure.http.audio_downloader import get_audio_downloader
+        logger.debug("Interfaces imported: ITranscriber, IAudioDownloader")
 
-    # Import services
-    from services.transcription import TranscribeService
+        # Step 2: Import implementations
+        logger.debug("Step 2/4: Importing implementations...")
+        from infrastructure.whisper.library_adapter import get_whisper_library_adapter
+        from infrastructure.http.audio_downloader import get_audio_downloader
 
-    # Register ITranscriber -> WhisperLibraryAdapter (singleton via factory)
-    Container.register_factory(ITranscriber, get_whisper_library_adapter)
-    logger.info("Registered ITranscriber -> WhisperLibraryAdapter")
-
-    # Register IAudioDownloader -> HttpAudioDownloader (singleton via factory)
-    Container.register_factory(IAudioDownloader, get_audio_downloader)
-    logger.info("Registered IAudioDownloader -> HttpAudioDownloader")
-
-    # Register TranscribeService with injected dependencies
-    def create_transcribe_service() -> TranscribeService:
-        transcriber = Container.resolve(ITranscriber)
-        audio_downloader = Container.resolve(IAudioDownloader)
-        return TranscribeService(
-            transcriber=transcriber,
-            audio_downloader=audio_downloader,
+        logger.debug(
+            "Implementations imported: WhisperLibraryAdapter, HttpAudioDownloader"
         )
 
-    Container.register_factory(TranscribeService, create_transcribe_service)
-    logger.info("Registered TranscribeService with DI")
+        # Step 3: Import services
+        logger.debug("Step 3/4: Importing services...")
+        from services.transcription import TranscribeService
 
-    Container._mark_initialized()
-    logger.info("Dependency injection container bootstrapped successfully")
+        logger.debug("Services imported: TranscribeService")
+
+        # Step 4: Register all components
+        logger.debug("Step 4/4: Registering components...")
+
+        # Register ITranscriber -> WhisperLibraryAdapter (singleton via factory)
+        Container.register_factory(ITranscriber, get_whisper_library_adapter)
+        logger.info("Registered ITranscriber -> WhisperLibraryAdapter (factory)")
+
+        # Register IAudioDownloader -> HttpAudioDownloader (singleton via factory)
+        Container.register_factory(IAudioDownloader, get_audio_downloader)
+        logger.info("Registered IAudioDownloader -> HttpAudioDownloader (factory)")
+
+        # Register TranscribeService with injected dependencies
+        def create_transcribe_service() -> TranscribeService:
+            transcriber = Container.resolve(ITranscriber)
+            audio_downloader = Container.resolve(IAudioDownloader)
+            return TranscribeService(
+                transcriber=transcriber,
+                audio_downloader=audio_downloader,
+            )
+
+        Container.register_factory(TranscribeService, create_transcribe_service)
+        logger.info("Registered TranscribeService with DI (factory)")
+
+        Container._mark_initialized()
+        logger.info("Dependency injection container bootstrapped successfully")
+
+    except Exception as e:
+        logger.error(f"Failed to bootstrap container: {e}")
+        logger.exception("Container bootstrap error details:")
+        raise
 
 
 def get_transcriber():
     """
     Get ITranscriber implementation from container.
-    
+
     Returns:
         ITranscriber implementation
     """
     from interfaces.transcriber import ITranscriber
-    
+
     if not Container.is_initialized():
         bootstrap_container()
-    
+
     return Container.resolve(ITranscriber)
 
 
 def get_audio_downloader():
     """
     Get IAudioDownloader implementation from container.
-    
+
     Returns:
         IAudioDownloader implementation
     """
     from interfaces.audio_downloader import IAudioDownloader
-    
+
     if not Container.is_initialized():
         bootstrap_container()
-    
+
     return Container.resolve(IAudioDownloader)
 
 
 def get_transcribe_service():
     """
     Get TranscribeService from container.
-    
+
     Returns:
         TranscribeService with injected dependencies
     """
     from services.transcription import TranscribeService
-    
+
     if not Container.is_initialized():
         bootstrap_container()
-    
+
     return Container.resolve(TranscribeService)

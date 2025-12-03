@@ -74,7 +74,7 @@ def create_health_routes(app) -> APIRouter:
         "/health",
         response_model=StandardResponse,
         summary="Health Check",
-        description="Check service health",
+        description="Check service health including model initialization status",
         operation_id="health_check",
         responses={
             200: {
@@ -83,7 +83,7 @@ def create_health_routes(app) -> APIRouter:
                     "application/json": {
                         "examples": {
                             "healthy": {
-                                "summary": "Service operational",
+                                "summary": "Service operational with model loaded",
                                 "value": {
                                     "error_code": 0,
                                     "message": "Service is healthy",
@@ -91,6 +91,11 @@ def create_health_routes(app) -> APIRouter:
                                         "status": "healthy",
                                         "service": "SMAP Service",
                                         "version": "1.0.0",
+                                        "model": {
+                                            "initialized": True,
+                                            "size": "base",
+                                            "ram_mb": 1000,
+                                        },
                                     },
                                 },
                             },
@@ -106,20 +111,54 @@ def create_health_routes(app) -> APIRouter:
 
         **Returns:**
         Health status object indicating:
-        - Overall health status (healthy)
+        - Overall health status (healthy/unhealthy)
         - Service name and version
+        - Model initialization status, size, and configuration
         """
+        import time
+
         settings = get_settings()
 
+        # Get model status from app state
+        model_initialized = getattr(app.state, "model_initialized", False)
+        model_size = getattr(app.state, "model_size", None)
+        model_config = getattr(app.state, "model_config", {})
+        model_init_timestamp = getattr(app.state, "model_init_timestamp", None)
+        model_init_error = getattr(app.state, "model_init_error", None)
+
+        # Build model info
+        model_info = {
+            "initialized": model_initialized,
+            "size": model_size,
+            "ram_mb": model_config.get("ram_mb") if model_config else None,
+        }
+
+        # Add uptime if model is initialized
+        if model_initialized and model_init_timestamp:
+            model_info["uptime_seconds"] = round(time.time() - model_init_timestamp, 2)
+
+        # Add error if model failed to initialize
+        if not model_initialized and model_init_error:
+            model_info["error"] = model_init_error
+
+        # Determine overall health status
+        status = "healthy" if model_initialized else "unhealthy"
+        message = (
+            "Service is healthy"
+            if model_initialized
+            else "Service unhealthy: model not initialized"
+        )
+
         health_data = HealthResponse(
-            status="healthy",
+            status=status,
             service=settings.app_name,
             version=settings.app_version,
         )
 
-        # Convert Pydantic model to dict for response
+        # Convert Pydantic model to dict and add model info
         health_dict = health_data.model_dump()
+        health_dict["model"] = model_info
 
-        return success_response(message="Service is healthy", data=health_dict)
+        return success_response(message=message, data=health_dict)
 
     return router

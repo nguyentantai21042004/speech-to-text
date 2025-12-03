@@ -413,8 +413,11 @@ MINIO_ACCESS_KEY="minioadmin"
 MINIO_SECRET_KEY="minioadmin"
 
 # Logging
-LOG_LEVEL="INFO"
+LOG_LEVEL="INFO"                 # DEBUG, INFO, WARNING, ERROR, CRITICAL
+LOG_FORMAT="console"             # console (colored) or json (for log aggregation)
+LOG_FILE_ENABLED=true            # Enable file logging
 LOG_FILE="logs/stt.log"
+SCRIPT_LOG_LEVEL="INFO"          # Log level for standalone scripts
 ```
 
 ### Chunking Configuration
@@ -692,6 +695,81 @@ tail -f logs/stt.log
 # Docker logs
 docker-compose logs -f api
 ```
+
+#### 11. Model initialization fails at startup
+```bash
+# Check logs for model initialization errors
+docker-compose logs api | grep -i "model\|whisper\|init"
+
+# Common causes:
+# 1. Model files missing - download artifacts
+make setup-artifacts-base
+
+# 2. Model files corrupted - re-download
+rm -rf models/whisper_base_xeon
+make setup-artifacts-base
+
+# 3. Wrong WHISPER_ARTIFACTS_DIR - check path
+docker exec stt-api printenv | grep WHISPER_ARTIFACTS_DIR
+# Should output: WHISPER_ARTIFACTS_DIR=models
+
+# 4. Library loading error - check LD_LIBRARY_PATH
+docker exec stt-api printenv | grep LD_LIBRARY_PATH
+```
+
+#### 12. Health check shows unhealthy
+```bash
+# Check health endpoint
+curl http://localhost:8000/health | jq
+
+# If model.initialized is false, check:
+# 1. Model initialization logs
+docker-compose logs api | grep -i "model\|init\|error"
+
+# 2. Model files exist
+docker exec stt-api ls -la models/whisper_base_xeon/
+
+# 3. Restart service
+docker-compose restart api
+```
+
+---
+
+## Logging Configuration
+
+### Log Levels
+| Level | Description | Use Case |
+|-------|-------------|----------|
+| `DEBUG` | Detailed diagnostic info | Development, troubleshooting |
+| `INFO` | General operational messages | Production (default) |
+| `WARNING` | Potentially harmful situations | Production |
+| `ERROR` | Error events | Production |
+| `CRITICAL` | Severe errors | Production |
+
+### Log Formats
+- **console** (default): Colored, human-readable output for development
+- **json**: Structured JSON output for log aggregation (ELK, Datadog, etc.)
+
+### Configuration Examples
+```bash
+# Development (verbose)
+LOG_LEVEL=DEBUG
+LOG_FORMAT=console
+LOG_FILE_ENABLED=true
+
+# Production (structured)
+LOG_LEVEL=INFO
+LOG_FORMAT=json
+LOG_FILE_ENABLED=false  # Use container log collector
+
+# Script debugging
+SCRIPT_LOG_LEVEL=DEBUG
+```
+
+### Log Files
+- `logs/app.log` - All application logs (DEBUG level)
+- `logs/error.log` - Error logs only (ERROR level)
+- `logs/app.json.log` - JSON format logs (when LOG_FORMAT=json)
 
 ---
 

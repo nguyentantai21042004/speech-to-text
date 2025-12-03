@@ -39,6 +39,22 @@ from typing import Optional
 PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
+# Setup logging
+try:
+    from core.logger import logger, configure_script_logging
+    from core.config import get_settings
+
+    settings = get_settings()
+    configure_script_logging(level=settings.script_log_level)
+except ImportError:
+    from loguru import logger
+
+    logger.remove()
+    logger.add(
+        sys.stdout,
+        format="<green>{time:HH:mm:ss}</green> | <level>{level: <8}</level> | <level>{message}</level>",
+    )
+
 
 @dataclass
 class BenchmarkResult:
@@ -230,8 +246,8 @@ def load_test_audio() -> str:
     # Priority 1: Use standardized benchmark audio
     if test_audio_path.exists():
         duration = get_audio_duration(str(test_audio_path))
-        print(
-            f"✅ Using standardized benchmark audio: {test_audio_path} ({duration:.1f}s)"
+        logger.success(
+            f"Using standardized benchmark audio: {test_audio_path} ({duration:.1f}s)"
         )
         return str(test_audio_path)
 
@@ -243,7 +259,7 @@ def load_test_audio() -> str:
             return str(audio_file)
 
     # Create synthetic test audio using ffmpeg
-    print("⚠️  No test audio found, creating synthetic 30s audio...")
+    logger.warning("No test audio found, creating synthetic 30s audio...")
     test_audio_dir.mkdir(parents=True, exist_ok=True)
 
     try:
@@ -266,21 +282,21 @@ def load_test_audio() -> str:
             check=True,
             timeout=60,
         )
-        print(f"✅ Created test audio: {test_audio_path}")
+        logger.success(f"Created test audio: {test_audio_path}")
         return str(test_audio_path)
     except Exception as e:
-        print(f"❌ Failed to create test audio: {e}")
+        logger.error(f"Failed to create test audio: {e}")
         raise RuntimeError("No test audio available and cannot create synthetic audio")
 
 
 def run_warmup(adapter, audio_path: str, language: str = "vi") -> None:
     """Run warmup inference (not counted in benchmark)."""
-    print("🔥 Running warmup inference...")
+    logger.info("Running warmup inference...")
     try:
         adapter.transcribe(audio_path, language=language)
-        print("✅ Warmup complete")
+        logger.success("Warmup complete")
     except Exception as e:
-        print(f"⚠️  Warmup failed (continuing anyway): {e}")
+        logger.warning(f"Warmup failed (continuing anyway): {e}")
 
 
 def run_benchmark(
@@ -292,7 +308,7 @@ def run_benchmark(
     Returns:
         Tuple of (avg_latency_ms, total_time_s, rps)
     """
-    print(f"🏃 Running {iterations} benchmark iterations...")
+    logger.info(f"Running {iterations} benchmark iterations...")
 
     latencies = []
     start_total = time.perf_counter()
@@ -302,7 +318,7 @@ def run_benchmark(
         try:
             adapter.transcribe(audio_path, language=language)
         except Exception as e:
-            print(f"⚠️  Iteration {i+1} failed: {e}")
+            logger.warning(f"Iteration {i+1} failed: {e}")
             continue
         end = time.perf_counter()
 
@@ -310,7 +326,7 @@ def run_benchmark(
         latencies.append(latency_ms)
 
         if (i + 1) % 10 == 0 or i == 0:
-            print(f"   Iteration {i+1}/{iterations}: {latency_ms:.2f}ms")
+            logger.info(f"Iteration {i+1}/{iterations}: {latency_ms:.2f}ms")
 
     end_total = time.perf_counter()
     total_time_s = end_total - start_total
@@ -332,12 +348,11 @@ def run_stress_test(adapter, audio_path: str, language: str = "vi") -> dict:
     """
     from core.config import get_settings
 
-    print("\n" + "=" * 60)
-    print("🔥 MULTI-THREAD STRESS TEST")
-    print("=" * 60)
-    print("Testing for CPU throttling with different thread counts...")
-    print("CPU Limit: 1 core (if in container)")
-    print()
+    logger.info("=" * 60)
+    logger.info("MULTI-THREAD STRESS TEST")
+    logger.info("=" * 60)
+    logger.info("Testing for CPU throttling with different thread counts...")
+    logger.info("CPU Limit: 1 core (if in container)")
 
     settings = get_settings()
     original_threads = settings.whisper_n_threads
@@ -347,14 +362,10 @@ def run_stress_test(adapter, audio_path: str, language: str = "vi") -> dict:
     iterations_per_test = 10
 
     for n_threads in thread_counts:
-        print(f"\n--- Testing with {n_threads} thread(s) ---")
+        logger.info(f"Testing with {n_threads} thread(s)...")
 
         # Update thread count in settings
         os.environ["WHISPER_N_THREADS"] = str(n_threads)
-
-        # Re-initialize adapter with new thread count
-        # Note: In production, you'd need to reload the adapter
-        # For now, we'll just measure with current settings
 
         latencies = []
         for i in range(iterations_per_test):
@@ -362,7 +373,7 @@ def run_stress_test(adapter, audio_path: str, language: str = "vi") -> dict:
             try:
                 adapter.transcribe(audio_path, language=language)
             except Exception as e:
-                print(f"⚠️  Failed: {e}")
+                logger.warning(f"Failed: {e}")
                 continue
             end = time.perf_counter()
             latencies.append((end - start) * 1000)
@@ -370,39 +381,39 @@ def run_stress_test(adapter, audio_path: str, language: str = "vi") -> dict:
         if latencies:
             avg_latency = sum(latencies) / len(latencies)
             results[n_threads] = avg_latency
-            print(f"   Avg Latency: {avg_latency:.2f}ms")
+            logger.info(f"Avg Latency: {avg_latency:.2f}ms")
 
     # Restore original thread count
     os.environ["WHISPER_N_THREADS"] = str(original_threads)
 
     # Analyze results
-    print("\n" + "=" * 60)
-    print("STRESS TEST RESULTS")
-    print("=" * 60)
-    print(f"{'Threads':<10} {'Avg Latency (ms)':<20} {'Status':<20}")
-    print("-" * 50)
+    logger.info("=" * 60)
+    logger.info("STRESS TEST RESULTS")
+    logger.info("=" * 60)
 
     baseline = results.get(1, 0)
     throttling_detected = False
 
     for threads, latency in sorted(results.items()):
         ratio = latency / baseline if baseline > 0 else 0
-        status = "✅ OK"
+        status = "OK"
         if ratio > 2.0:
-            status = "⚠️  THROTTLING DETECTED"
+            status = "THROTTLING DETECTED"
             throttling_detected = True
+            logger.warning(f"Threads: {threads}, Latency: {latency:.2f}ms - {status}")
         elif ratio > 1.5:
-            status = "⚠️  Degraded"
-
-        print(f"{threads:<10} {latency:<20.2f} {status:<20}")
+            status = "Degraded"
+            logger.warning(f"Threads: {threads}, Latency: {latency:.2f}ms - {status}")
+        else:
+            logger.info(f"Threads: {threads}, Latency: {latency:.2f}ms - {status}")
 
     if throttling_detected:
-        print("\n⚠️  THROTTLING DETECTED!")
-        print("   Recommendations:")
-        print("   1. Keep thread count at 1 for this CPU limit")
-        print("   2. Or increase CPU limit to match thread count")
+        logger.warning("THROTTLING DETECTED!")
+        logger.info("Recommendations:")
+        logger.info("1. Keep thread count at 1 for this CPU limit")
+        logger.info("2. Or increase CPU limit to match thread count")
     else:
-        print("\n✅ No throttling detected")
+        logger.success("No throttling detected")
 
     return {
         "results": results,
@@ -419,32 +430,32 @@ def save_results(result: BenchmarkResult, output_path: str) -> None:
     with open(output_file, "w") as f:
         json.dump(asdict(result), f, indent=2)
 
-    print(f"💾 Results saved to: {output_path}")
+    logger.success(f"Results saved to: {output_path}")
 
 
 def print_results(result: BenchmarkResult) -> None:
     """Print benchmark results to console."""
-    print("\n" + "=" * 60)
-    print("BENCHMARK RESULTS")
-    print("=" * 60)
-    print(f"Timestamp:      {result.timestamp}")
-    print(f"Architecture:   {result.architecture}")
-    print(f"CPU Model:      {result.cpu_model}")
-    print(f"Model Size:     {result.model_size}")
-    print(f"Iterations:     {result.iterations}")
-    print(f"CPU Limit:      {result.cpu_limit} core(s)")
-    print(f"Memory:         {result.memory_mb} MB")
-    print(f"Docker:         {'Yes' if result.is_docker else 'No'}")
-    print("-" * 60)
-    print(f"Avg Latency:    {result.avg_latency_ms:.2f} ms")
-    print(f"Total Time:     {result.total_time_s:.2f} s")
-    print(f"RPS:            {result.rps:.2f} req/s")
-    print("=" * 60)
+    logger.info("=" * 60)
+    logger.info("BENCHMARK RESULTS")
+    logger.info("=" * 60)
+    logger.info(f"Timestamp:      {result.timestamp}")
+    logger.info(f"Architecture:   {result.architecture}")
+    logger.info(f"CPU Model:      {result.cpu_model}")
+    logger.info(f"Model Size:     {result.model_size}")
+    logger.info(f"Iterations:     {result.iterations}")
+    logger.info(f"CPU Limit:      {result.cpu_limit} core(s)")
+    logger.info(f"Memory:         {result.memory_mb} MB")
+    logger.info(f"Docker:         {'Yes' if result.is_docker else 'No'}")
+    logger.info("-" * 60)
+    logger.info(f"Avg Latency:    {result.avg_latency_ms:.2f} ms")
+    logger.info(f"Total Time:     {result.total_time_s:.2f} s")
+    logger.info(f"RPS:            {result.rps:.2f} req/s")
+    logger.info("=" * 60)
 
     if not result.is_docker:
-        print("\n⚠️  WARNING: Not running in Docker container!")
-        print("   Results may be inaccurate due to multi-core usage.")
-        print('   For accurate benchmarks, run with: docker run --cpus="1" ...')
+        logger.warning("Not running in Docker container!")
+        logger.warning("Results may be inaccurate due to multi-core usage.")
+        logger.info('For accurate benchmarks, run with: docker run --cpus="1" ...')
 
 
 def main():
@@ -491,9 +502,9 @@ def main():
 
     args = parser.parse_args()
 
-    print("=" * 60)
-    print("WHISPER BENCHMARK TOOL")
-    print("=" * 60)
+    logger.info("=" * 60)
+    logger.info("WHISPER BENCHMARK TOOL")
+    logger.info("=" * 60)
 
     # Detect system info
     architecture = detect_architecture()
@@ -502,32 +513,31 @@ def main():
     cpu_limit = get_cpu_limit()
     is_docker = is_running_in_docker()
 
-    print(f"Architecture:   {architecture}")
-    print(f"CPU Model:      {cpu_model}")
-    print(f"Memory:         {memory_mb} MB")
-    print(f"CPU Limit:      {cpu_limit} core(s)")
-    print(f"Docker:         {'Yes' if is_docker else 'No'}")
-    print(f"Model Size:     {args.model_size}")
-    print(f"Iterations:     {args.iterations}")
-    print()
+    logger.info(f"Architecture:   {architecture}")
+    logger.info(f"CPU Model:      {cpu_model}")
+    logger.info(f"Memory:         {memory_mb} MB")
+    logger.info(f"CPU Limit:      {cpu_limit} core(s)")
+    logger.info(f"Docker:         {'Yes' if is_docker else 'No'}")
+    logger.info(f"Model Size:     {args.model_size}")
+    logger.info(f"Iterations:     {args.iterations}")
 
     # Set model size environment variable
     os.environ["WHISPER_MODEL_SIZE"] = args.model_size
 
     # Import and initialize adapter
-    print("📦 Loading Whisper model...")
+    logger.info("Loading Whisper model...")
     try:
         from infrastructure.whisper.library_adapter import WhisperLibraryAdapter
 
         adapter = WhisperLibraryAdapter(model_size=args.model_size)
-        print("✅ Model loaded successfully")
+        logger.success("Model loaded successfully")
     except Exception as e:
-        print(f"❌ Failed to load model: {e}")
+        logger.error(f"Failed to load model: {e}")
         sys.exit(1)
 
     # Load test audio
     audio_path = args.audio or load_test_audio()
-    print(f"🎵 Test audio: {audio_path}")
+    logger.info(f"Test audio: {audio_path}")
 
     # Run warmup
     run_warmup(adapter, audio_path, args.language)

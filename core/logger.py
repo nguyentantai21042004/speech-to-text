@@ -1,13 +1,144 @@
 """
 Centralized logging configuration using Loguru.
 Follows Single Responsibility Principle - only handles logging setup.
+
+Features:
+- Structured logging with Loguru
+- Standard library logging interception (routes stdlib logging to Loguru)
+- Third-party library logger configuration (httpx, urllib3, boto3)
+- Script logging helper for standalone scripts
+- JSON logging format option for production
 """
 
+import logging
 import sys
 from pathlib import Path
 from typing import Optional
 
 from loguru import logger  # type: ignore
+
+
+# =============================================================================
+# Standard Library Logging Interception
+# =============================================================================
+
+
+class InterceptHandler(logging.Handler):
+    """
+    Intercept standard library logging and route to Loguru.
+
+    This allows third-party libraries that use stdlib logging to have their
+    logs captured and formatted consistently through Loguru.
+    """
+
+    def emit(self, record: logging.LogRecord) -> None:
+        # Get corresponding Loguru level
+        try:
+            level = logger.level(record.levelname).name
+        except ValueError:
+            level = record.levelno
+
+        # Find caller from where logging call originated
+        frame, depth = logging.currentframe(), 2
+        while frame and frame.f_code.co_filename == logging.__file__:
+            frame = frame.f_back
+            depth += 1
+
+        logger.opt(depth=depth, exception=record.exc_info).log(
+            level, record.getMessage()
+        )
+
+
+def intercept_standard_logging() -> None:
+    """
+    Intercept Python standard library logging and route to Loguru.
+
+    This ensures all logs from third-party libraries using stdlib logging
+    are captured and formatted consistently through Loguru.
+    """
+    logging.basicConfig(handlers=[InterceptHandler()], level=0, force=True)
+    logger.debug("Standard library logging intercepted and routed to Loguru")
+
+
+def configure_third_party_loggers() -> None:
+    """
+    Configure third-party library loggers to reduce noise.
+
+    Sets appropriate log levels for common libraries to prevent
+    verbose debug output from cluttering application logs.
+    """
+    # Suppress verbose logs from HTTP libraries
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
+    logging.getLogger("urllib3").setLevel(logging.WARNING)
+
+    # AWS SDK loggers - INFO level to see important operations
+    logging.getLogger("botocore").setLevel(logging.INFO)
+    logging.getLogger("boto3").setLevel(logging.INFO)
+
+    # Uvicorn loggers - keep at INFO for server events
+    logging.getLogger("uvicorn").setLevel(logging.INFO)
+    logging.getLogger("uvicorn.access").setLevel(logging.INFO)
+    logging.getLogger("uvicorn.error").setLevel(logging.INFO)
+
+    # FastAPI/Starlette
+    logging.getLogger("fastapi").setLevel(logging.INFO)
+
+    logger.debug("Third-party library loggers configured")
+
+
+# =============================================================================
+# Script Logging Helper
+# =============================================================================
+
+
+def configure_script_logging(level: str = "INFO", json_format: bool = False) -> None:
+    """
+    Configure logging for standalone scripts.
+
+    Provides a simplified logging setup for scripts that run outside
+    the main application context. Console output only (no file logging).
+
+    Args:
+        level: Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+        json_format: If True, output logs in JSON format
+
+    Example:
+        from core.logger import logger, configure_script_logging
+
+        configure_script_logging(level="DEBUG")
+        logger.info("Script started")
+    """
+    # Remove all existing handlers
+    logger.remove()
+
+    # Validate log level
+    level = level.upper()
+    if level not in ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"):
+        level = "INFO"
+
+    if json_format:
+        # JSON format for production/log aggregation
+        logger.add(
+            sys.stdout,
+            format="{message}",
+            level=level,
+            serialize=True,  # Loguru's built-in JSON serialization
+        )
+    else:
+        # Simplified colored format for scripts
+        logger.add(
+            sys.stdout,
+            colorize=True,
+            format="<green>{time:HH:mm:ss}</green> | <level>{level: <8}</level> | <level>{message}</level>",
+            level=level,
+        )
+
+    # Also intercept stdlib logging for scripts
+    intercept_standard_logging()
+    configure_third_party_loggers()
+
+    logger.debug(f"Script logging configured (level={level}, json={json_format})")
 
 
 def format_exception_short(exception: Exception, context: Optional[str] = None) -> str:
@@ -58,105 +189,187 @@ def format_exception_short(exception: Exception, context: Optional[str] = None) 
         return f"{type(exception).__name__}: {str(exception)}"
 
 
-def setup_logger():
-    """Configure logger handlers. Only configures once even if called multiple times."""
+def setup_logger() -> None:
+    """
+    Configure logger handlers for the main application.
+
+    Only configures once even if called multiple times.
+    Supports both console (colored) and JSON formats based on LOG_FORMAT setting.
+    """
     from .config import get_settings
 
     settings = get_settings()
 
     # Get log level: LOG_LEVEL takes precedence over DEBUG flag
-    # If LOG_LEVEL is set, use it; otherwise use DEBUG flag
     if settings.log_level:
-        # Use LOG_LEVEL from config (from .env or default)
         log_level = settings.log_level.upper()
-        # Validate log level
         if log_level not in ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"):
             log_level = "INFO"
     else:
-        # Fallback to DEBUG flag if LOG_LEVEL not set
         log_level = "DEBUG" if settings.debug else "INFO"
 
     # Check if logger already has our handlers configured
-    # Loguru is a singleton, so handlers persist across module reloads
     handlers_count_before = len(logger._core.handlers.values())
-
-    # If already configured (has 3 handlers: console + app.log + error.log)
-    # We still need to update the console handler level if it changed
     if handlers_count_before >= 3:
-        # Update console handler level if needed (for dynamic level changes)
-        # Note: This requires removing and re-adding console handler
-        # But since handlers are identified by ID and we can't easily update them,
-        # we'll just return - user can restart to pick up new LOG_LEVEL
         return
 
     # Remove all existing handlers first
     logger.remove()
-
-    # Now check if handlers were actually removed
-    # If handlers still exist, they might be from previous config (shouldn't happen with remove())
     handlers_count_after_remove = len(logger._core.handlers.values())
 
-    # Only configure if handlers were successfully removed
     if handlers_count_after_remove == 0:
-        # Filter function to prevent duplicate logs from reloader processes
-        def filter_reloader_logs(record):
-            """Filter out logs from __main__ and __mp_main__ (reloader processes)."""
-            module_name = record.get("name", "")
+        # Get log format from settings (console or json)
+        log_format = getattr(settings, "log_format", "console").lower()
+        log_file_enabled = getattr(settings, "log_file_enabled", True)
 
-            # Only log from actual application code (cmd.* modules)
-            # Block logs from __main__ and __mp_main__ (these are from uvicorn reloader)
-            if module_name in ("__main__", "__mp_main__"):
-                return False
+        # Check if JSON format is requested
+        if log_format == "json":
+            # JSON format for production/log aggregation
+            logger.add(
+                sys.stdout,
+                format="{message}",
+                level=log_level,
+                serialize=True,
+            )
 
-            # Allow all other logs
-            return True
+            if log_file_enabled:
+                log_dir = Path("logs")
+                log_dir.mkdir(exist_ok=True)
 
-        # Get log level: LOG_LEVEL takes precedence over DEBUG flag
-        # If LOG_LEVEL is set, use it; otherwise use DEBUG flag
-        if settings.log_level:
-            # Use LOG_LEVEL from config (from .env or default)
-            log_level = settings.log_level.upper()
-            # Validate log level
-            if log_level not in ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"):
-                log_level = "INFO"
+                logger.add(
+                    log_dir / "app.json.log",
+                    rotation="100 MB",
+                    retention="30 days",
+                    compression="zip",
+                    format="{message}",
+                    level="DEBUG",
+                    serialize=True,
+                )
+
+                logger.add(
+                    log_dir / "error.json.log",
+                    rotation="100 MB",
+                    retention="30 days",
+                    compression="zip",
+                    format="{message}",
+                    level="ERROR",
+                    serialize=True,
+                )
         else:
-            # Fallback to DEBUG flag if LOG_LEVEL not set
-            log_level = "DEBUG" if settings.debug else "INFO"
+            # Console format (default) - colored, human-readable
+            def filter_reloader_logs(record):
+                """Filter out logs from __main__ and __mp_main__ (reloader processes)."""
+                module_name = record.get("name", "")
+                if module_name in ("__main__", "__mp_main__"):
+                    return False
+                return True
 
-        # Console handler with color - filter duplicate logs from reloader
-        logger.add(
-            sys.stdout,
-            colorize=True,
-            format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
-            level=log_level,
-            filter=filter_reloader_logs,
-        )
+            logger.add(
+                sys.stdout,
+                colorize=True,
+                format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
+                level=log_level,
+                filter=filter_reloader_logs,
+            )
 
-        # File handler for all logs - always DEBUG level to capture everything
-        log_dir = Path("logs")
-        log_dir.mkdir(exist_ok=True)
+            if log_file_enabled:
+                log_dir = Path("logs")
+                log_dir.mkdir(exist_ok=True)
 
-        logger.add(
-            log_dir / "app.log",
-            rotation="100 MB",
-            retention="30 days",
-            compression="zip",
-            format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}",
-            level="DEBUG",  # File logs always DEBUG to capture everything
-        )
+                logger.add(
+                    log_dir / "app.log",
+                    rotation="100 MB",
+                    retention="30 days",
+                    compression="zip",
+                    format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}",
+                    level="DEBUG",
+                )
 
-        # Error file handler
-        logger.add(
-            log_dir / "error.log",
-            rotation="100 MB",
-            retention="30 days",
-            compression="zip",
-            format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}",
-            level="ERROR",
-        )
+                logger.add(
+                    log_dir / "error.log",
+                    rotation="100 MB",
+                    retention="30 days",
+                    compression="zip",
+                    format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}",
+                    level="ERROR",
+                )
+
+        # Intercept standard library logging and configure third-party loggers
+        intercept_standard_logging()
+        configure_third_party_loggers()
+
+
+# =============================================================================
+# JSON Logging Format
+# =============================================================================
+
+
+def setup_json_logging(level: str = "INFO") -> None:
+    """
+    Configure JSON logging format for production environments.
+
+    JSON format is ideal for log aggregation systems like ELK, Datadog, etc.
+
+    Args:
+        level: Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+    """
+    # Remove all existing handlers
+    logger.remove()
+
+    # Validate log level
+    level = level.upper()
+    if level not in ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"):
+        level = "INFO"
+
+    # Console handler with JSON format
+    logger.add(
+        sys.stdout,
+        format="{message}",
+        level=level,
+        serialize=True,  # Loguru's built-in JSON serialization
+    )
+
+    # File handler with JSON format
+    log_dir = Path("logs")
+    log_dir.mkdir(exist_ok=True)
+
+    logger.add(
+        log_dir / "app.json.log",
+        rotation="100 MB",
+        retention="30 days",
+        compression="zip",
+        format="{message}",
+        level="DEBUG",
+        serialize=True,
+    )
+
+    # Error file handler with JSON format
+    logger.add(
+        log_dir / "error.json.log",
+        rotation="100 MB",
+        retention="30 days",
+        compression="zip",
+        format="{message}",
+        level="ERROR",
+        serialize=True,
+    )
+
+    # Intercept stdlib logging
+    intercept_standard_logging()
+    configure_third_party_loggers()
+
+    logger.info(f"JSON logging configured (level={level})")
 
 
 # Configure logger on module import
 setup_logger()
 
-__all__ = ["logger", "format_exception_short"]
+__all__ = [
+    "logger",
+    "format_exception_short",
+    "configure_script_logging",
+    "configure_third_party_loggers",
+    "intercept_standard_logging",
+    "setup_json_logging",
+    "InterceptHandler",
+]

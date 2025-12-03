@@ -32,7 +32,14 @@ from internal.api.utils import error_response
 async def lifespan(app: FastAPI):
     """
     Manage application lifespan - startup and shutdown.
+
+    Implements eager model initialization:
+    - Loads Whisper model at startup (not on first request)
+    - Validates model is loaded correctly
+    - Fails fast if model cannot be loaded
     """
+    import time
+
     try:
         settings = get_settings()
         logger.info(
@@ -58,6 +65,45 @@ async def lifespan(app: FastAPI):
         bootstrap_container()
         logger.info("DI Container initialized")
 
+        # EAGER MODEL INITIALIZATION
+        # Load Whisper model at startup instead of on first request
+        logger.info("Initializing Whisper model (eager loading)...")
+        model_init_start = time.time()
+
+        try:
+            from core.container import get_transcriber
+            from infrastructure.whisper.library_adapter import ModelInitError
+
+            transcriber = get_transcriber()  # This triggers model loading
+
+            # Validate model is actually loaded
+            if not hasattr(transcriber, "ctx") or transcriber.ctx is None:
+                raise ModelInitError("Whisper context is NULL after initialization")
+
+            model_init_duration = time.time() - model_init_start
+
+            # Store model info in app state for health checks
+            app.state.model_initialized = True
+            app.state.model_init_timestamp = time.time()
+            app.state.model_size = transcriber.model_size
+            app.state.model_config = transcriber.config
+
+            logger.info(
+                f"Whisper model initialized successfully: "
+                f"model={transcriber.model_size}, "
+                f"duration={model_init_duration:.2f}s, "
+                f"estimated_ram={transcriber.config['ram_mb']}MB"
+            )
+
+        except Exception as e:
+            logger.error(f"FATAL: Failed to initialize Whisper model: {e}")
+            logger.exception("Model initialization error details:")
+            # Mark model as not initialized
+            app.state.model_initialized = False
+            app.state.model_init_error = str(e)
+            # Fail fast - don't start service if model can't load
+            raise RuntimeError(f"Failed to initialize Whisper model: {e}") from e
+
         logger.info(
             f"========== {settings.app_name} API service started successfully =========="
         )
@@ -66,6 +112,12 @@ async def lifespan(app: FastAPI):
 
         # Shutdown sequence
         logger.info("========== Shutting down API service ==========")
+
+        # Log model cleanup
+        if hasattr(app.state, "model_initialized") and app.state.model_initialized:
+            logger.info(f"Cleaning up Whisper model (size={app.state.model_size})...")
+            # Model cleanup happens automatically via __del__ in WhisperLibraryAdapter
+
         logger.info("========== API service stopped successfully ==========")
 
     except Exception as e:
@@ -158,10 +210,17 @@ MP3, WAV, M4A, MP4, AAC, OGG, FLAC, WMA, WEBM, MKV, AVI, MOV
         logger.debug("Mounting swagger static files...")
         try:
             from pathlib import Path
+
             swagger_dir = Path(__file__).parent / "swagger_static"
             if swagger_dir.exists():
-                app.mount("/swagger", StaticFiles(directory=str(swagger_dir), html=True), name="swagger")
-                logger.info(f"Swagger static files mounted at /swagger from {swagger_dir}")
+                app.mount(
+                    "/swagger",
+                    StaticFiles(directory=str(swagger_dir), html=True),
+                    name="swagger",
+                )
+                logger.info(
+                    f"Swagger static files mounted at /swagger from {swagger_dir}"
+                )
             else:
                 logger.warning(f"Swagger static directory not found: {swagger_dir}")
         except Exception as e:

@@ -13,6 +13,22 @@ from unittest.mock import patch, MagicMock
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+# Setup logging
+try:
+    from core.logger import logger, configure_script_logging
+    from core.config import get_settings as get_config_settings
+
+    settings = get_config_settings()
+    configure_script_logging(level=settings.script_log_level)
+except ImportError:
+    from loguru import logger
+
+    logger.remove()
+    logger.add(
+        sys.stdout,
+        format="<green>{time:HH:mm:ss}</green> | <level>{level: <8}</level> | <level>{message}</level>",
+    )
+
 from infrastructure.whisper.library_adapter import (
     WhisperLibraryAdapter,
     MIN_CHUNK_DURATION,
@@ -22,18 +38,18 @@ from core.config import get_settings
 
 def test_min_chunk_duration_constant():
     """Test 3.2.1: MIN_CHUNK_DURATION constant exists and is 2.0"""
-    print("Testing MIN_CHUNK_DURATION constant...")
+    logger.info("Testing MIN_CHUNK_DURATION constant...")
     assert MIN_CHUNK_DURATION == 2.0, f"Expected 2.0, got {MIN_CHUNK_DURATION}"
-    print(f"  ✅ MIN_CHUNK_DURATION = {MIN_CHUNK_DURATION}")
+    logger.success(f"MIN_CHUNK_DURATION = {MIN_CHUNK_DURATION}")
 
 
 def test_chunk_overlap_config():
     """Test 4.1.1: WHISPER_CHUNK_OVERLAP default is 3 seconds"""
-    print("Testing chunk overlap config...")
+    logger.info("Testing chunk overlap config...")
     settings = get_settings()
     # Note: .env may override, so we check it's reasonable
     assert hasattr(settings, "whisper_chunk_overlap")
-    print(f"  ✅ whisper_chunk_overlap = {settings.whisper_chunk_overlap}")
+    logger.success(f"whisper_chunk_overlap = {settings.whisper_chunk_overlap}")
 
 
 def test_validate_audio_method():

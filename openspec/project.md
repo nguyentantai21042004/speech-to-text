@@ -226,15 +226,135 @@ uv run pytest --cov=.        # With coverage
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `WHISPER_MODEL_SIZE` | `base` | Model size: base, small, medium |
-| `WHISPER_ARTIFACTS_DIR` | `.` | Base directory for model artifacts |
+| `WHISPER_ARTIFACTS_DIR` | `models` | Base directory for model artifacts |
 | `WHISPER_LANGUAGE` | `vi` | Default transcription language |
 | `WHISPER_N_THREADS` | `0` | CPU threads (0=auto, max 8) |
 | `WHISPER_CHUNK_ENABLED` | `true` | Enable chunking for long audio |
 | `WHISPER_CHUNK_DURATION` | `30` | Chunk size in seconds |
-| `WHISPER_CHUNK_OVERLAP` | `1` | Overlap between chunks |
+| `WHISPER_CHUNK_OVERLAP` | `3` | Overlap between chunks (seconds) |
 | `TRANSCRIBE_TIMEOUT_SECONDS` | `30` | Base timeout (adaptive for long audio) |
 | `MAX_UPLOAD_SIZE_MB` | `500` | Maximum file size |
 | `INTERNAL_API_KEY` | - | API authentication key |
+| `LOG_LEVEL` | `INFO` | Log level: DEBUG, INFO, WARNING, ERROR |
+| `LOG_FORMAT` | `console` | Log format: console (colored) or json |
+| `LOG_FILE_ENABLED` | `true` | Enable file logging |
+| `SCRIPT_LOG_LEVEL` | `INFO` | Log level for standalone scripts |
+
+## Logging Best Practices
+
+### Log Levels
+- **DEBUG**: Detailed diagnostic information (audio stats, chunk boundaries, timing)
+- **INFO**: General operational messages (startup, model loaded, request processed)
+- **WARNING**: Potentially harmful situations (silent audio, empty chunks, degraded performance)
+- **ERROR**: Error events that might still allow the application to continue
+- **CRITICAL**: Severe errors that prevent the application from functioning
+
+### Structured Logging with Loguru
+All logging is centralized through `core/logger.py` using Loguru:
+
+```python
+from core.logger import logger
+
+# Basic logging
+logger.info("Processing request")
+logger.debug(f"Audio duration: {duration:.2f}s")
+logger.warning("Audio appears to be silent")
+logger.error(f"Transcription failed: {error}")
+
+# With exception traceback
+logger.exception("Detailed error information:")
+```
+
+### Script Logging
+For standalone scripts, use `configure_script_logging()`:
+
+```python
+from core.logger import logger, configure_script_logging
+
+# At script start
+configure_script_logging(level="DEBUG")  # or use settings.script_log_level
+
+logger.info("Script started")
+logger.success("Operation completed")  # Loguru's success level
+```
+
+### Third-Party Library Logging
+Third-party libraries are automatically configured to reduce noise:
+- `httpx`, `urllib3`: WARNING level
+- `boto3`, `botocore`: INFO level
+- `uvicorn`: INFO level
+
+### JSON Logging for Production
+Set `LOG_FORMAT=json` for structured JSON output suitable for log aggregation:
+
+```bash
+LOG_FORMAT=json python -m cmd.api.main
+```
+
+## Eager Model Initialization
+
+### Pattern Overview
+The service uses **eager model initialization** - the Whisper model is loaded at startup, not on first request:
+
+```
+Service Startup → DI Container Bootstrap → Eager Model Load → Service Ready
+                                                    ↓
+                                          Validate Model Loaded
+                                                    ↓
+                                          Fail Fast if Error
+```
+
+### Benefits
+- **Consistent Latency**: First request has same latency as subsequent requests
+- **Fail Fast**: Service fails to start if model files are missing/corrupted
+- **Health Check Accuracy**: `/health` endpoint reflects actual model status
+- **Easier Debugging**: Startup issues are immediately visible in logs
+
+### Implementation
+Model initialization happens in the lifespan context manager (`cmd/api/main.py`):
+
+```python
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Bootstrap DI container
+    bootstrap_container()
+    
+    # Eager model initialization
+    transcriber = get_transcriber()  # Triggers model loading
+    
+    # Validate model is loaded
+    if transcriber.ctx is None:
+        raise RuntimeError("Model failed to initialize")
+    
+    # Store in app state for health checks
+    app.state.model_initialized = True
+    app.state.model_size = transcriber.model_size
+    
+    yield  # Service is ready
+```
+
+### Health Check Integration
+The `/health` endpoint includes model status:
+
+```json
+{
+  "status": "healthy",
+  "service": "Speech-to-Text API",
+  "version": "1.0.0",
+  "model": {
+    "initialized": true,
+    "size": "base",
+    "ram_mb": 1000,
+    "uptime_seconds": 123.45
+  }
+}
+```
+
+### Failure Behavior
+If model initialization fails:
+- Service exits with clear error message
+- Logs include full exception traceback
+- Health check returns `status: "unhealthy"` with error details
 
 ## Migration History
 
