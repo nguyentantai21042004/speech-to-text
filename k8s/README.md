@@ -89,30 +89,31 @@ curl http://localhost:8000/health
 
 ## Resource Configuration
 
-### Base Model (Default)
+### Base Model (Default) - Horizontal Scaling Strategy
 
-Optimized for **balanced performance** and **good accuracy**:
+Optimized for **horizontal scaling** based on performance benchmarks (see `document/performance.md`):
 
 ```yaml
 resources:
   requests:
-    memory: "1Gi"     # Base model ~1GB + overhead
-    cpu: "500m"       # 0.5 CPU cores minimum
+    memory: "1Gi"     # Base model ~500MB-1GB + overhead
+    cpu: "1000m"      # 1 CPU core (horizontal scaling strategy)
     ephemeral-storage: "2Gi"  # For chunking temp files
   limits:
     memory: "2Gi"     # Maximum memory (allows spikes)
-    cpu: "4000m"      # 4 CPU cores (optimal threading)
+    cpu: "2000m"      # 2 CPU cores (burst for GC/background tasks)
     ephemeral-storage: "5Gi"  # Max temp storage for long audio
 ```
 
-**Specifications:**
-- **Memory:** ~1GB base model + overhead = 1GB request, 2GB limit for safety
-- **CPU:** 4 cores limit for optimal Whisper threading (8 threads)
-- **Storage:** 5GB for chunking temp files (long audio)
+**Why 1 Core Per Pod?**
+- Service scales poorly beyond 2 cores (single-threaded Whisper.cpp)
+- 2 pods × 1 core > 1 pod × 2 cores (less contention)
+- 2.5x more pods per node = better horizontal scaling
+- See `document/performance.md` for detailed benchmarks
 
 ### Medium Model
 
-For **production** with **higher accuracy**:
+For **production** with **higher accuracy** (still using horizontal scaling):
 
 1. Update `k8s/secret.yaml`:
 ```yaml
@@ -123,12 +124,12 @@ WHISPER_MODEL_SIZE: "medium"
 ```yaml
 resources:
   requests:
-    memory: "2Gi"
-    cpu: "1000m"
+    memory: "2Gi"     # Medium model ~2GB
+    cpu: "1000m"      # Still 1 core (horizontal scaling)
     ephemeral-storage: "3Gi"
   limits:
-    memory: "4Gi"
-    cpu: "4000m"
+    memory: "4Gi"     # Allow memory spikes
+    cpu: "2000m"      # 2 cores burst
     ephemeral-storage: "10Gi"
 ```
 
@@ -138,6 +139,8 @@ resources:
   requests:
     storage: 3Gi
 ```
+
+**Note:** Even with medium model, keep 1 core request for horizontal scaling efficiency.
 
 ---
 
@@ -185,16 +188,21 @@ kubectl scale deployment/stt-api -n stt --replicas=5
 
 ### Auto-Scaling (HPA)
 
-The deployment includes an optional HPA configuration:
+The deployment includes HPA optimized for 1-core horizontal scaling:
 
 ```yaml
 # In k8s/deployment.yaml
-minReplicas: 2
-maxReplicas: 10
+minReplicas: 2      # HA minimum
+maxReplicas: 10     # Cost cap
 metrics:
-- cpu: 70%
-- memory: 80%
+- cpu: 70%          # Scale at 700m (of 1000m request)
+- memory: 75%       # Scale at ~768Mi (of 1Gi request)
 ```
+
+**Scaling Math:**
+- Each pod handles ~2-3 RPS at 1 core (Base model)
+- For 10 RPS target: need 4-5 pods
+- HPA triggers scale-up before latency degrades
 
 Enable HPA:
 ```bash

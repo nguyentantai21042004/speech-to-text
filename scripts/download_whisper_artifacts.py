@@ -31,9 +31,9 @@ except ImportError:
         format="<green>{time:HH:mm:ss}</green> | <level>{level: <8}</level> | <level>{message}</level>",
     )
 
-    MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "http://172.16.19.115:9000")
+    MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "http://localhost:9000")
     MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY", "minioadmin")
-    MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY", "hcmut2025")
+    MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY", "minioadmin")
 
 try:
     import boto3

@@ -50,9 +50,9 @@ services:
       LD_LIBRARY_PATH: "/app/models/whisper_base_xeon:/app/models/whisper_small_xeon:/app/models/whisper_medium_xeon"
       
       # MinIO Configuration
-      MINIO_ENDPOINT: "${MINIO_ENDPOINT:-http://172.16.19.115:9000}"
+      MINIO_ENDPOINT: "${MINIO_ENDPOINT:-http://localhost:9000}"
       MINIO_ACCESS_KEY: "${MINIO_ACCESS_KEY:-minioadmin}"
-      MINIO_SECRET_KEY: "${MINIO_SECRET_KEY:-hcmut2025}"
+      MINIO_SECRET_KEY: "${MINIO_SECRET_KEY:-CHANGE_ME_IN_PRODUCTION}"
 
       # Whisper Settings
       WHISPER_EXECUTABLE: "/app/whisper/bin/whisper-cli"

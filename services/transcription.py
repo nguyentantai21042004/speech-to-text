@@ -3,12 +3,15 @@ Transcription Service - Business logic for audio transcription.
 
 This service orchestrates audio download and transcription using
 dependency injection through interfaces.
+
+Optimized with dedicated ThreadPoolExecutor for CPU-bound transcription tasks.
 """
 
 import os
 import uuid
 import asyncio
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Dict, Any, Optional
 
@@ -18,6 +21,26 @@ from interfaces.transcriber import ITranscriber
 from interfaces.audio_downloader import IAudioDownloader
 
 settings = get_settings()
+
+# Dedicated thread pool for CPU-bound transcription tasks
+# Using max_workers=2 to match the "1 core per pod" strategy
+# This prevents thread contention while allowing some parallelism for I/O
+_transcription_executor: Optional[ThreadPoolExecutor] = None
+
+
+def get_transcription_executor() -> ThreadPoolExecutor:
+    """Get or create dedicated ThreadPoolExecutor for transcription tasks."""
+    global _transcription_executor
+    if _transcription_executor is None:
+        # 2 workers: 1 for active transcription, 1 for queued work
+        # Matches the 2-core limit in K8s deployment
+        _transcription_executor = ThreadPoolExecutor(
+            max_workers=2, thread_name_prefix="transcribe-"
+        )
+        logger.info(
+            "Created dedicated ThreadPoolExecutor for transcription (max_workers=2)"
+        )
+    return _transcription_executor
 
 
 class TranscribeService:
@@ -125,21 +148,23 @@ class TranscribeService:
             )
 
             # 4. Transcribe with timeout using ITranscriber
+            # Use dedicated executor for CPU-bound transcription
             loop = asyncio.get_running_loop()
+            executor = get_transcription_executor()
             start_transcribe = time.time()
 
             lang = language or settings.whisper_language
             model = settings.whisper_model
 
             logger.info(
-                f"Starting transcription (language={lang}, timeout={adaptive_timeout}s)"
+                f"Starting transcription (language={lang}, timeout={adaptive_timeout}s, executor=dedicated)"
             )
 
             def _transcribe():
                 return self.transcriber.transcribe(str(temp_file_path), lang)
 
             transcription_text = await asyncio.wait_for(
-                loop.run_in_executor(None, _transcribe),
+                loop.run_in_executor(executor, _transcribe),
                 timeout=adaptive_timeout,
             )
 

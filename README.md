@@ -407,8 +407,8 @@ WHISPER_N_THREADS=0              # 0 for auto-detect (recommended)
 INTERNAL_API_KEY="your-api-key-here"
 TRANSCRIBE_TIMEOUT_SECONDS=90    # Base timeout (adaptive for long audio)
 
-# MinIO (for artifact download)
-MINIO_ENDPOINT="http://172.16.19.115:9000"
+# MinIO (for artifact download) - Change to your MinIO server
+MINIO_ENDPOINT="http://localhost:9000"
 MINIO_ACCESS_KEY="minioadmin"
 MINIO_SECRET_KEY="minioadmin"
 

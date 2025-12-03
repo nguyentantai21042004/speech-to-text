@@ -65,8 +65,24 @@ test_*.py
 
 # Documentation (not needed in Docker image)
 docs/
+document/
 *.md
 !README.md
+
+# AI/Agent configuration (not needed in Docker image)
+.agent/
+.gemini/
+.kilo/
+.kilocode/
+.kiro/
+openspec/
+
+# Kubernetes manifests (not needed inside container)
+k8s/
+
+# Benchmark and proposal files
+*benchmark*.md
+*proposal*.md
 
 # Docker files (not needed inside image)
 .docker/
@@ -99,4 +115,19 @@ Makefile
 *.bak
 *.tmp
 *.cache
+
+# Coverage and test reports
+.coverage
+.coveragerc
+scripts/test_reports/
+scripts/test_audio/
+
+# Models directory (downloaded at runtime via entrypoint)
+models/whisper_*/
+
+# Lock files and Python version (not needed in container)
+.python-version
+
+# Infrastructure folder (if not used in production)
+infrastructure/
 

@@ -40,7 +40,7 @@ services:
       WHISPER_ARTIFACTS_DIR: ${WHISPER_ARTIFACTS_DIR:-models}
 
       # MinIO Configuration (for artifact download)
-      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-http://172.16.19.115:9000}
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-http://localhost:9000}
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
       
@@ -69,14 +69,22 @@ services:
       - whisper_library_medium:/app/models/whisper_medium_xeon
     networks:
       - stt-network
+    # Resource limits aligned with K8s deployment (1 core strategy)
+    # See document/performance.md for rationale
+    deploy:
+      resources:
+        limits:
+          cpus: '2'      # 2 cores burst (matches K8s limit)
+          memory: 2G     # 2GB max memory
+        reservations:
+          cpus: '1'      # 1 core guaranteed (matches K8s request)
+          memory: 1G     # 1GB reserved
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s
-
-
+      start_period: 60s  # Increased for model loading
 
 networks:
   stt-network:

@@ -3,6 +3,14 @@
 # ==============================================================================
 # STAGE 1: BUILDER (Use uv for ultra-fast builds)
 # ==============================================================================
+# Multi-stage build for optimal image size:
+# - Builder stage: ~800MB (includes build tools, compilers)
+# - Runtime stage: ~400MB (only runtime dependencies)
+# 
+# Build context optimization (see .dockerignore):
+# - Excludes: document/, models/whisper_*/, tests/, openspec/, .git/
+# - Estimated context reduction: ~100MB
+# ==============================================================================
 FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim AS builder
 
 # Optimize for uv
@@ -38,13 +46,20 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # ==============================================================================
 # STAGE 2: RUNTIME (Python Slim - Includes FFmpeg)
 # ==============================================================================
+# Minimal runtime image with only production dependencies
+# - No build tools (gcc, g++, make)
+# - No dev dependencies
+# - Models downloaded at runtime via entrypoint.sh
+# ==============================================================================
 FROM python:3.12-slim-bookworm AS runtime
 
-# Install runtime dependencies (FFmpeg for chunking, wget for downloads, libgomp1 for Whisper.cpp threading)
+# Install runtime dependencies
+# - ffmpeg: includes ffprobe for audio chunking
+# - wget/curl: for model downloads
+# - libgomp1: OpenMP for Whisper.cpp threading
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     ffmpeg \
-    ffprobe \
     wget \
     curl \
     libgomp1 \
@@ -54,11 +69,13 @@ RUN apt-get update && \
 
 # Standard OCI Metadata
 LABEL org.opencontainers.image.title="Speech-to-Text API Service" \
-      org.opencontainers.image.description="Secure, Fast Speech2Text API with UV and Distroless" \
-      org.opencontainers.image.source="https://github.com/nguyentantai21042004/speech-to-text" \
-      org.opencontainers.image.licenses="MIT"
+    org.opencontainers.image.description="Secure, Fast Speech2Text API with UV and Distroless" \
+    org.opencontainers.image.source="https://github.com/nguyentantai21042004/speech-to-text" \
+    org.opencontainers.image.licenses="MIT"
 
 # Set optimal environment variables for Python Runtime
+# Note: Sensitive values (MINIO_ACCESS_KEY, MINIO_SECRET_KEY, INTERNAL_API_KEY)
+# should be provided via K8s secrets or docker-compose, not hardcoded here
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONPATH="/app" \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -70,28 +87,32 @@ ENV PATH="/app/.venv/bin:$PATH" \
     WHISPER_MODEL_SIZE=base \
     WHISPER_LANGUAGE=en \
     WHISPER_N_THREADS=0 \
-    # Chunking Configuration (NEW - Production Ready)
+    # Chunking Configuration (Production Ready)
     WHISPER_CHUNK_ENABLED=true \
     WHISPER_CHUNK_DURATION=30 \
     WHISPER_CHUNK_OVERLAP=1 \
-    # MinIO Configuration (Override in production with secrets)
-    MINIO_ENDPOINT=http://172.16.19.115:9000 \
-    MINIO_ACCESS_KEY=minioadmin \
-    MINIO_SECRET_KEY=minioadmin \
     # Timeout Configuration
     TRANSCRIBE_TIMEOUT_SECONDS=90
 
 WORKDIR /app
 
+# Create non-root user for security (matches K8s securityContext)
+RUN groupadd --gid 1000 appgroup && \
+    useradd --uid 1000 --gid appgroup --shell /bin/bash --create-home appuser
+
 # Copy virtual environment from Builder
 COPY --from=builder /app/.venv /app/.venv
 
-# Copy source code (all required modules)
+# Copy source code (only required modules for production)
+# Note: models/ binary files excluded - downloaded at runtime via entrypoint
+# Note: infrastructure/, interfaces/ excluded - not used in production
+# Note: tests/, document/, openspec/ excluded via .dockerignore
 COPY cmd /app/cmd
 COPY core /app/core
 COPY internal /app/internal
 COPY services /app/services
-COPY adapters /app/adapters
+COPY models/__init__.py /app/models/__init__.py
+COPY models/schemas.py /app/models/schemas.py
 COPY whisper /app/whisper
 COPY scripts /app/scripts
 
@@ -101,6 +122,13 @@ RUN chmod +x /app/scripts/download_whisper_artifacts.py || true
 # Copy and setup entrypoint
 COPY scripts/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
+
+# Create logs directory and set ownership
+RUN mkdir -p /app/logs /app/models && \
+    chown -R appuser:appgroup /app
+
+# Switch to non-root user
+USER appuser
 
 # Native Healthcheck (Optimized for Kubernetes liveness/readiness probes)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \

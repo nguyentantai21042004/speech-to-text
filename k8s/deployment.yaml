@@ -67,46 +67,39 @@ spec:
               name: stt-secrets
               key: MINIO_SECRET_KEY
         
-        # Resource Limits (Benchmark-based sizing)
+        # Resource Limits (Optimized for Horizontal Scaling)
         # =================================================================
-        # SIZING CALCULATION (from benchmark results):
-        # - M4 Latency: ~200ms, RPS: ~5.0 (1 core)
-        # - Xeon Latency: ~500ms, RPS: ~2.0 (1 core)
-        # - Normalization Ratio: 2.5 (1 M4 core ≈ 2.5 Xeon cores)
+        # STRATEGY: "1 Core Per Pod" - Horizontal Scaling
+        # Reference: document/performance.md
         #
-        # For target 10 RPS:
-        # - M4 cores needed: 10 / 5.0 = 2.0 cores
-        # - Xeon cores needed: 2.0 * 2.5 = 5.0 cores
-        # - With 2 pods: 5.0 / 2 = 2.5 cores per pod
+        # KEY INSIGHT: Service scales poorly beyond 2 cores due to:
+        # - Single-threaded Whisper.cpp inference
+        # - GIL contention in Python
+        # - Memory bandwidth saturation
         #
-        # CPU SCALING EFFICIENCY (from profile_cpu_scaling.py):
-        # - 1 core: baseline
-        # - 2 cores: ~90% efficiency (1.8x speedup)
-        # - 4 cores: ~83% efficiency (3.3x speedup)
-        # - 8 cores: ~70% efficiency (diminishing returns)
-        # Recommendation: 2.5-4 cores per pod for optimal efficiency
+        # DECISION:
+        # - Request: 1 core (1000m) - Guarantees dedicated capacity
+        # - Limit: 2 cores (2000m) - Allows burst for GC/downloads
         #
-        # MEMORY SIZING (from audio benchmarking):
-        # - Base model: ~500MB RAM
-        # - Small model: ~1GB RAM
-        # - Medium model: ~2GB RAM
+        # IMPACT:
+        # - Pod density: 2.5x more pods per node vs 2.5 core request
+        # - Throughput: 2 pods × 1 core > 1 pod × 2 cores (less contention)
+        #
+        # MEMORY SIZING (unchanged):
+        # - Base/Small model: ~500MB-1GB RAM
         # - Peak during processing: +200-500MB
+        # - Request 1Gi, Limit 2Gi fits Base/Small models well
         #
-        # Run benchmarks to get actual values:
-        #   python scripts/run_all_tests.py           # Test suite
-        #   python scripts/profile_cpu_scaling.py    # CPU scaling
-        #   ./scripts/benchmark_all_audio.sh         # Audio benchmarks
-        #
-        # See docs/SCALING_STRATEGY.md for detailed guidance
+        # See document/performance.md for detailed benchmarks
         # =================================================================
         resources:
           requests:
             memory: "1Gi"     # Base memory for model (~500MB-1GB) + buffer
-            cpu: "2500m"      # 2.5 CPU cores (from benchmark sizing)
+            cpu: "1000m"      # 1 CPU core (horizontal scaling strategy)
             ephemeral-storage: "2Gi"  # For audio chunking temp files
           limits:
             memory: "2Gi"     # Maximum memory (prevents OOM, allows spikes)
-            cpu: "3000m"      # 3 CPU cores (+0.5 for burst handling)
+            cpu: "2000m"      # 2 CPU cores (burst for GC/background tasks)
             ephemeral-storage: "5Gi"  # Maximum temp storage for long audio
         
         # Liveness Probe (Restart if unhealthy)
@@ -191,16 +184,23 @@ spec:
       #   value: "ml"
       #   effect: "NoSchedule"
 ---
-# Horizontal Pod Autoscaler (Benchmark-based configuration)
+# Horizontal Pod Autoscaler (Optimized for 1-Core Horizontal Scaling)
 # =================================================================
-# HPA THRESHOLDS (based on benchmark data):
-# - Each pod handles ~2 RPS at 2.5 cores (from benchmark)
-# - CPU target 70% = scale when approaching capacity
+# HPA STRATEGY (aligned with "1 core per pod" approach):
+# - CPU target 70% = scale when pod reaches 700m usage (of 1000m request)
 # - Memory target 75% = scale before OOM risk
 #
-# Scaling behavior:
-# - Scale up quickly (0s stabilization) for traffic spikes
-# - Scale down slowly (5min stabilization) to avoid flapping
+# WHY 70% CPU TARGET:
+# - With 1 core request, 70% = 700m CPU usage
+# - Leaves 300m headroom for burst (limit is 2000m)
+# - Triggers scale-up before latency degrades
+#
+# SCALING MATH:
+# - Each pod handles ~2-3 RPS at 1 core (Base model)
+# - For 10 RPS target: need 4-5 pods
+# - minReplicas=2 ensures HA, maxReplicas=10 caps cost
+#
+# Reference: document/performance.md
 # =================================================================
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
@@ -212,21 +212,21 @@ spec:
     apiVersion: apps/v1
     kind: Deployment
     name: stt-api
-  minReplicas: 2    # Minimum for HA (from benchmark sizing)
-  maxReplicas: 10   # Max based on cluster capacity
+  minReplicas: 2    # Minimum for HA (spread across nodes)
+  maxReplicas: 10   # Max based on cluster capacity and cost
   metrics:
   - type: Resource
     resource:
       name: cpu
       target:
         type: Utilization
-        averageUtilization: 70  # Scale at 70% CPU (benchmark shows linear scaling)
+        averageUtilization: 70  # Scale at 70% of 1 core (700m)
   - type: Resource
     resource:
       name: memory
       target:
         type: Utilization
-        averageUtilization: 75  # Scale at 75% memory (model uses ~500MB-1GB)
+        averageUtilization: 75  # Scale at 75% of 1Gi (~768Mi)
   behavior:
     scaleDown:
       stabilizationWindowSeconds: 300  # 5 minutes cooldown (avoid flapping)
@@ -243,6 +243,5 @@ spec:
       - type: Pods
         value: 2                # Add max 2 pods per 30s
         periodSeconds: 30
-      selectPolicy: Max
       selectPolicy: Max
 
