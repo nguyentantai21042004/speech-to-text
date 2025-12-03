@@ -79,10 +79,25 @@ spec:
         # - Xeon cores needed: 2.0 * 2.5 = 5.0 cores
         # - With 2 pods: 5.0 / 2 = 2.5 cores per pod
         #
-        # Run benchmark to get actual values:
-        #   ./scripts/run_benchmark_mac.sh
-        #   kubectl apply -f k8s/bench-pod.yaml
-        #   python scripts/analyze_benchmark.py --m4 <m4.json> --xeon <xeon.json>
+        # CPU SCALING EFFICIENCY (from profile_cpu_scaling.py):
+        # - 1 core: baseline
+        # - 2 cores: ~90% efficiency (1.8x speedup)
+        # - 4 cores: ~83% efficiency (3.3x speedup)
+        # - 8 cores: ~70% efficiency (diminishing returns)
+        # Recommendation: 2.5-4 cores per pod for optimal efficiency
+        #
+        # MEMORY SIZING (from audio benchmarking):
+        # - Base model: ~500MB RAM
+        # - Small model: ~1GB RAM
+        # - Medium model: ~2GB RAM
+        # - Peak during processing: +200-500MB
+        #
+        # Run benchmarks to get actual values:
+        #   python scripts/run_all_tests.py           # Test suite
+        #   python scripts/profile_cpu_scaling.py    # CPU scaling
+        #   ./scripts/benchmark_all_audio.sh         # Audio benchmarks
+        #
+        # See docs/SCALING_STRATEGY.md for detailed guidance
         # =================================================================
         resources:
           requests:

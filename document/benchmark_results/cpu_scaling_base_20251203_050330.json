@@ -1,0 +1,12 @@
+{
+    "timestamp": "2025-12-03T05:03:30.260604+00:00",
+    "architecture": "x86_64",
+    "cpu_model": "VirtualApple @ 2.50GHz",
+    "model_size": "base",
+    "audio_duration_s": 30.0,
+    "results": [],
+    "recommendation": "No results to analyze",
+    "optimal_cores": 1,
+    "diminishing_returns_point": 0,
+    "scaling_type": "unknown"
+}

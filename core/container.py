@@ -36,9 +36,6 @@ class Container:
             instance: The implementation instance
         """
         cls._instances[interface] = instance
-        logger.debug(
-            f"Registered singleton: {interface.__name__} -> {instance.__class__.__name__}"
-        )
 
     @classmethod
     def register_factory(cls, interface: Type[T], factory: Callable[[], T]) -> None:
@@ -51,7 +48,6 @@ class Container:
             factory: Factory function that returns an implementation
         """
         cls._providers[interface] = factory
-        logger.debug(f"Registered factory: {interface.__name__}")
 
     @classmethod
     def resolve(cls, interface: Type[T]) -> T:
@@ -93,7 +89,6 @@ class Container:
         cls._factories.clear()
         cls._providers.clear()
         cls._initialized = False
-        logger.debug("Container cleared")
 
     @classmethod
     def is_initialized(cls) -> bool:
@@ -119,36 +114,23 @@ def bootstrap_container() -> None:
     after the first successful initialization.
     """
     if Container.is_initialized():
-        logger.debug("Container already initialized, skipping bootstrap (idempotent)")
         return
 
     logger.info("Bootstrapping dependency injection container...")
 
     try:
-        # Step 1: Import interfaces
-        logger.debug("Step 1/4: Importing interfaces...")
+        # Import interfaces
         from interfaces.transcriber import ITranscriber
         from interfaces.audio_downloader import IAudioDownloader
 
-        logger.debug("Interfaces imported: ITranscriber, IAudioDownloader")
-
-        # Step 2: Import implementations
-        logger.debug("Step 2/4: Importing implementations...")
+        # Import implementations
         from infrastructure.whisper.library_adapter import get_whisper_library_adapter
         from infrastructure.http.audio_downloader import get_audio_downloader
 
-        logger.debug(
-            "Implementations imported: WhisperLibraryAdapter, HttpAudioDownloader"
-        )
-
-        # Step 3: Import services
-        logger.debug("Step 3/4: Importing services...")
+        # Import services
         from services.transcription import TranscribeService
 
-        logger.debug("Services imported: TranscribeService")
-
-        # Step 4: Register all components
-        logger.debug("Step 4/4: Registering components...")
+        # Register all components
 
         # Register ITranscriber -> WhisperLibraryAdapter (singleton via factory)
         Container.register_factory(ITranscriber, get_whisper_library_adapter)

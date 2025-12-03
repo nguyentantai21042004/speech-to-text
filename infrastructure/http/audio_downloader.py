@@ -16,7 +16,7 @@ from interfaces.audio_downloader import IAudioDownloader
 class HttpAudioDownloader(IAudioDownloader):
     """
     HTTP-based audio downloader.
-    
+
     Implements IAudioDownloader interface for dependency injection.
     Downloads audio files from URLs with streaming and size validation.
     """
@@ -30,12 +30,11 @@ class HttpAudioDownloader(IAudioDownloader):
         """
         settings = get_settings()
         self._max_size_mb = max_size_mb or settings.max_upload_size_mb
-        logger.debug(f"HttpAudioDownloader initialized (max_size={self._max_size_mb}MB)")
 
     async def download(self, url: str, destination: Path) -> float:
         """
         Download audio file from URL to destination.
-        
+
         Implements IAudioDownloader.download() interface.
 
         Args:
@@ -49,7 +48,7 @@ class HttpAudioDownloader(IAudioDownloader):
             ValueError: If download fails or file too large
         """
         logger.info(f"Downloading audio from: {url}")
-        
+
         async with httpx.AsyncClient() as client:
             async with client.stream("GET", url, follow_redirects=True) as response:
                 if response.status_code != 200:
@@ -84,7 +83,7 @@ class HttpAudioDownloader(IAudioDownloader):
     def get_max_size_mb(self) -> int:
         """
         Get maximum allowed file size in MB.
-        
+
         Implements IAudioDownloader.get_max_size_mb() interface.
 
         Returns:

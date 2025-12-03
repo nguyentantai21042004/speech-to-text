@@ -458,6 +458,185 @@ def print_results(result: BenchmarkResult) -> None:
         logger.info('For accurate benchmarks, run with: docker run --cpus="1" ...')
 
 
+def get_all_audio_files() -> list[Path]:
+    """Get all audio files from test_audio directory."""
+    test_audio_dir = PROJECT_ROOT / "scripts" / "test_audio"
+    audio_files = []
+
+    if test_audio_dir.exists():
+        for ext in ["*.wav", "*.mp3", "*.m4a", "*.mp4"]:
+            audio_files.extend(test_audio_dir.glob(ext))
+
+    # Sort by file size
+    audio_files.sort(key=lambda f: f.stat().st_size)
+    return audio_files
+
+
+def calculate_rtf(processing_time_s: float, audio_duration_s: float) -> float:
+    """
+    Calculate Real-Time Factor (RTF).
+
+    RTF < 1.0 means faster than real-time.
+    RTF = processing_time / audio_duration
+    """
+    if audio_duration_s <= 0:
+        return 0.0
+    return processing_time_s / audio_duration_s
+
+
+def run_memory_profiled_benchmark(
+    adapter, audio_path: str, iterations: int, language: str = "vi"
+) -> tuple[float, float, float, float]:
+    """
+    Run benchmark with memory profiling.
+
+    Returns:
+        Tuple of (avg_latency_ms, total_time_s, rps, peak_memory_mb)
+    """
+    import tracemalloc
+
+    tracemalloc.start()
+
+    latencies = []
+    start_total = time.perf_counter()
+
+    for i in range(iterations):
+        start = time.perf_counter()
+        try:
+            adapter.transcribe(audio_path, language=language)
+        except Exception as e:
+            logger.warning(f"Iteration {i+1} failed: {e}")
+            continue
+        end = time.perf_counter()
+        latencies.append((end - start) * 1000)
+
+    end_total = time.perf_counter()
+    total_time_s = end_total - start_total
+
+    # Get peak memory
+    current, peak = tracemalloc.get_traced_memory()
+    tracemalloc.stop()
+    peak_memory_mb = peak / (1024 * 1024)
+
+    if not latencies:
+        return 0.0, total_time_s, 0.0, peak_memory_mb
+
+    avg_latency_ms = sum(latencies) / len(latencies)
+    rps = 1000 / avg_latency_ms if avg_latency_ms > 0 else 0
+
+    return avg_latency_ms, total_time_s, rps, peak_memory_mb
+
+
+def benchmark_all_audio(
+    adapter, model_size: str, iterations: int = 5, language: str = "vi"
+) -> list[dict]:
+    """
+    Benchmark all audio files in test_audio directory.
+
+    Returns:
+        List of benchmark results for each audio file
+    """
+    audio_files = get_all_audio_files()
+
+    if not audio_files:
+        logger.error("No audio files found in scripts/test_audio/")
+        return []
+
+    logger.info(f"Found {len(audio_files)} audio files to benchmark")
+    results = []
+
+    for audio_file in audio_files:
+        file_size_mb = audio_file.stat().st_size / (1024 * 1024)
+        audio_duration = get_audio_duration(str(audio_file))
+
+        logger.info(f"\nBenchmarking: {audio_file.name}")
+        logger.info(f"  Size: {file_size_mb:.2f} MB")
+        logger.info(f"  Duration: {audio_duration:.1f}s")
+
+        # Run benchmark with memory profiling
+        avg_latency_ms, total_time_s, rps, peak_memory_mb = (
+            run_memory_profiled_benchmark(
+                adapter, str(audio_file), iterations, language
+            )
+        )
+
+        if avg_latency_ms == 0:
+            logger.warning(f"  Skipped (all iterations failed)")
+            continue
+
+        rtf = calculate_rtf(avg_latency_ms / 1000, audio_duration)
+
+        result = {
+            "file_name": audio_file.name,
+            "file_size_mb": round(file_size_mb, 2),
+            "audio_duration_s": round(audio_duration, 1),
+            "avg_latency_ms": round(avg_latency_ms, 2),
+            "rps": round(rps, 4),
+            "rtf": round(rtf, 3),
+            "peak_memory_mb": round(peak_memory_mb, 2),
+            "model_size": model_size,
+            "iterations": iterations,
+        }
+        results.append(result)
+
+        logger.info(f"  Latency: {avg_latency_ms:.2f}ms")
+        logger.info(f"  RTF: {rtf:.3f}")
+        logger.info(f"  Peak Memory: {peak_memory_mb:.2f}MB")
+
+    return results
+
+
+def save_all_audio_results(results: list[dict], model_size: str) -> None:
+    """Save all-audio benchmark results."""
+    results_dir = PROJECT_ROOT / "scripts" / "benchmark_results"
+    results_dir.mkdir(parents=True, exist_ok=True)
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    # Save JSON
+    json_path = results_dir / f"all_audio_{model_size}_{timestamp}.json"
+    with open(json_path, "w") as f:
+        json.dump(
+            {
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "model_size": model_size,
+                "results": results,
+            },
+            f,
+            indent=2,
+        )
+    logger.success(f"Results saved to: {json_path}")
+
+    # Generate markdown report
+    md_path = results_dir / "audio_benchmark_report.md"
+    md_content = f"""# Audio Benchmark Report
+
+## Configuration
+- Model Size: {model_size}
+- Timestamp: {datetime.now().isoformat()}
+
+## Results
+
+| File | Size (MB) | Duration (s) | Latency (ms) | RTF | Memory (MB) |
+|------|-----------|--------------|--------------|-----|-------------|
+"""
+    for r in results:
+        md_content += f"| {r['file_name']} | {r['file_size_mb']} | {r['audio_duration_s']} | {r['avg_latency_ms']} | {r['rtf']} | {r['peak_memory_mb']} |\n"
+
+    md_content += """
+## RTF Analysis
+
+- RTF < 0.1: Excellent (10x faster than real-time)
+- RTF < 0.5: Good (2x faster than real-time)
+- RTF < 1.0: Acceptable (faster than real-time)
+- RTF > 1.0: Problematic (slower than real-time)
+"""
+
+    with open(md_path, "w") as f:
+        f.write(md_content)
+    logger.success(f"Markdown report saved to: {md_path}")
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Whisper Benchmark Tool - Measure inference performance",
@@ -498,6 +677,27 @@ def main():
     )
     parser.add_argument(
         "--audio", type=str, default=None, help="Path to test audio file (optional)"
+    )
+    parser.add_argument(
+        "--all-audio",
+        action="store_true",
+        help="Benchmark all audio files in test_audio directory",
+    )
+    parser.add_argument(
+        "--cpu-profile",
+        action="store_true",
+        help="Run CPU scaling profiler instead of standard benchmark",
+    )
+    parser.add_argument(
+        "--memory-profile",
+        action="store_true",
+        help="Enable memory profiling with tracemalloc",
+    )
+    parser.add_argument(
+        "--concurrent",
+        type=int,
+        default=0,
+        help="Number of concurrent requests to simulate (0 = disabled)",
     )
 
     args = parser.parse_args()
@@ -542,9 +742,30 @@ def main():
     # Run warmup
     run_warmup(adapter, audio_path, args.language)
 
+    # Run CPU profiler if requested
+    if args.cpu_profile:
+        logger.info("Running CPU scaling profiler...")
+        from scripts.profile_cpu_scaling import (
+            profile_cpu_scaling,
+            print_report,
+            save_report,
+        )
+
+        report = profile_cpu_scaling(model_size=args.model_size, language=args.language)
+        print_report(report)
+        return
+
     # Run stress test if requested
     if args.stress:
         stress_results = run_stress_test(adapter, audio_path, args.language)
+        return
+
+    # Run all-audio benchmark if requested
+    if args.all_audio:
+        results = benchmark_all_audio(
+            adapter, args.model_size, args.iterations, args.language
+        )
+        save_all_audio_results(results, args.model_size)
         return
 
     # Run benchmark

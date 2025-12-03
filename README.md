@@ -773,6 +773,77 @@ SCRIPT_LOG_LEVEL=DEBUG
 
 ---
 
+## Testing
+
+### Overview
+
+The test suite includes 114 tests covering:
+- **Unit Tests**: Configuration, utilities, business logic
+- **Integration Tests**: API endpoints, service layer
+- **Performance Tests**: CPU scaling, benchmarking
+
+### Quick Start
+
+```bash
+# Run all tests
+uv run pytest tests/ -v
+
+# Run with coverage
+uv run pytest tests/ --cov=. --cov-report=html
+
+# Run using test runner script (with HTML reports)
+uv run python scripts/run_all_tests.py
+```
+
+### Test Reports
+
+| Report | Location | Description |
+|--------|----------|-------------|
+| HTML Report | `scripts/test_reports/test_report.html` | Interactive test results |
+| Coverage | `htmlcov/index.html` | Code coverage report |
+| JSON Results | `scripts/test_reports/results.json` | Machine-readable results |
+
+See [TESTING.md](docs/TESTING.md) for comprehensive testing documentation.
+
+---
+
+## Performance Testing
+
+### Overview
+
+The system includes comprehensive performance testing tools to analyze CPU scaling, benchmark audio processing, and guide scaling decisions.
+
+### Quick Start
+
+```bash
+# Run CPU scaling profiler (in Docker)
+docker run --rm -v $(pwd):/app -w /app \
+  -e WHISPER_ARTIFACTS_DIR=models \
+  python:3.12-slim-bookworm \
+  python scripts/profile_cpu_scaling.py
+
+# Benchmark all audio files
+./scripts/benchmark_all_audio.sh
+```
+
+### Reports
+
+| Report | Location | Description |
+|--------|----------|-------------|
+| CPU Scaling | `scripts/benchmark_results/cpu_scaling_report.md` | CPU scaling analysis |
+| Performance | `docs/PERFORMANCE_REPORT.md` | Comprehensive performance report |
+| Scaling Guide | `docs/SCALING_STRATEGY.md` | When to scale up vs out |
+
+### Key Findings
+
+- **CPU Scaling**: Poor multi-core scaling - use "ít cores mạnh" (fewer but stronger cores)
+- **Optimal Config**: 1-2 cores per pod with high clock speed
+- **Scaling Strategy**: Scale horizontally (more pods) for throughput
+
+See [PERFORMANCE_REPORT.md](docs/PERFORMANCE_REPORT.md) and [SCALING_STRATEGY.md](docs/SCALING_STRATEGY.md) for details.
+
+---
+
 ## Contact
 
 - **Email**: nguyentantai.dev@gmail.com

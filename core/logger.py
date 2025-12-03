@@ -57,7 +57,6 @@ def intercept_standard_logging() -> None:
     are captured and formatted consistently through Loguru.
     """
     logging.basicConfig(handlers=[InterceptHandler()], level=0, force=True)
-    logger.debug("Standard library logging intercepted and routed to Loguru")
 
 
 def configure_third_party_loggers() -> None:
@@ -83,8 +82,6 @@ def configure_third_party_loggers() -> None:
 
     # FastAPI/Starlette
     logging.getLogger("fastapi").setLevel(logging.INFO)
-
-    logger.debug("Third-party library loggers configured")
 
 
 # =============================================================================
@@ -137,8 +134,6 @@ def configure_script_logging(level: str = "INFO", json_format: bool = False) -> 
     # Also intercept stdlib logging for scripts
     intercept_standard_logging()
     configure_third_party_loggers()
-
-    logger.debug(f"Script logging configured (level={level}, json={json_format})")
 
 
 def format_exception_short(exception: Exception, context: Optional[str] = None) -> str:

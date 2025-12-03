@@ -27,12 +27,10 @@ def check_ffmpeg() -> Tuple[bool, Optional[str]]:
     """
     ffprobe_path = shutil.which("ffprobe")
     if ffprobe_path:
-        logger.debug(f"ffprobe found at: {ffprobe_path}")
         return True, ffprobe_path
 
     ffmpeg_path = shutil.which("ffmpeg")
     if ffmpeg_path:
-        logger.debug(f"ffmpeg found at: {ffmpeg_path}")
         return True, ffmpeg_path
 
     logger.warning("ffmpeg/ffprobe not found in PATH")
@@ -65,8 +63,6 @@ def validate_dependencies(check_ffmpeg: bool = True) -> None:
             raise MissingDependencyError(error_msg)
 
         logger.info(f"All dependencies validated: ffmpeg/ffprobe={ffmpeg_path}")
-    else:
-        logger.debug("Skipping ffmpeg check (not required for this service)")
 
     # Check Whisper executable (optional - warn only, don't fail)
     settings = get_settings()

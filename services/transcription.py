@@ -167,7 +167,6 @@ class TranscribeService:
             if temp_file_path.exists():
                 try:
                     os.remove(temp_file_path)
-                    logger.debug(f"Cleaned up temp file: {temp_file_path}")
                 except Exception as e:
                     logger.warning(f"Failed to clean up temp file: {e}")
 

@@ -1,0 +1,36 @@
+{
+    "timestamp": "2025-12-03T05:09:57.718869+00:00",
+    "architecture": "x86_64",
+    "cpu_model": "VirtualApple @ 2.50GHz",
+    "model_size": "base",
+    "audio_duration_s": 29.921625,
+    "results": [{
+            "cpu_count": 1,
+            "avg_latency_ms": 10095.84,
+            "rps": 0.0991,
+            "speedup": 1.0,
+            "efficiency": 1.0,
+            "iterations": 2
+        },
+        {
+            "cpu_count": 2,
+            "avg_latency_ms": 10487.42,
+            "rps": 0.0954,
+            "speedup": 0.96,
+            "efficiency": 0.48,
+            "iterations": 2
+        },
+        {
+            "cpu_count": 4,
+            "avg_latency_ms": 11666.77,
+            "rps": 0.0857,
+            "speedup": 0.87,
+            "efficiency": 0.22,
+            "iterations": 2
+        }
+    ],
+    "recommendation": "Service shows poor multi-core scaling. Recommendation: Use '\u00edt cores m\u1ea1nh' - fewer but faster cores are more efficient.",
+    "optimal_cores": 1,
+    "diminishing_returns_point": 2,
+    "scaling_type": "poor"
+}

@@ -104,7 +104,6 @@ def download_artifacts(model_size="small"):
             try:
                 s3_client.download_file(BUCKET_NAME, key, str(local_path))
                 downloaded += 1
-                logger.debug(f"Downloaded {filename} successfully")
             except ClientError as e:
                 logger.error(f"Failed to download {filename}: {e}")
                 return False

@@ -76,7 +76,6 @@ class ModelDownloader:
         self.models_dir = Path(settings.whisper_models_dir)
         self.cache_file = self.models_dir / ".model_cache.json"
         self._validated_models = set()
-        logger.debug("ModelDownloader initialized")
 
     def ensure_model_exists(self, model: str) -> str:
         """
@@ -130,7 +129,6 @@ class ModelDownloader:
         """Check if model file exists and is valid."""
         try:
             if not model_path.exists():
-                logger.debug(f"Model file not found: {model_path}")
                 return False
 
             file_size_mb = model_path.stat().st_size / (1024 * 1024)
@@ -151,7 +149,6 @@ class ModelDownloader:
                     )
                     return False
 
-            logger.debug(f"Model validation passed: {model}")
             return True
 
         except Exception as e:
@@ -204,7 +201,6 @@ class ModelDownloader:
             if model_path.exists():
                 try:
                     model_path.unlink()
-                    logger.debug("Cleaned up partial download")
                 except Exception as cleanup_error:
                     logger.warning(f"Failed to cleanup: {cleanup_error}")
             raise
@@ -212,16 +208,13 @@ class ModelDownloader:
     def _calculate_md5(self, file_path: Path) -> str:
         """Calculate MD5 checksum of file."""
         try:
-            logger.debug(f"Calculating MD5 for: {file_path}")
             md5_hash = hashlib.md5()
 
             with open(file_path, "rb") as f:
                 for chunk in iter(lambda: f.read(8192), b""):
                     md5_hash.update(chunk)
 
-            checksum = md5_hash.hexdigest()
-            logger.debug(f"MD5: {checksum}")
-            return checksum
+            return md5_hash.hexdigest()
 
         except Exception as e:
             logger.error(f"MD5 calculation failed: {e}")
@@ -243,8 +236,6 @@ class ModelDownloader:
 
             with open(self.cache_file, "w") as f:
                 json.dump(cache, f, indent=2)
-
-            logger.debug(f"Cache updated for model: {model}")
 
         except Exception as e:
             logger.warning(f"Failed to update cache: {e}")

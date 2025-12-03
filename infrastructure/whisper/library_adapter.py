@@ -89,8 +89,7 @@ def capture_native_logs(source: str, level: str = "info"):
             if stderr_lines:
                 log_method(f"[{source}:stderr]\n" + "\n".join(stderr_lines))
 
-    except Exception as capture_error:
-        logger.debug(f"Failed to capture native logs ({source}): {capture_error}")
+    except Exception:
         yield
 
 
@@ -191,8 +190,6 @@ class WhisperLibraryAdapter(ITranscriber):
     def _load_libraries(self) -> None:
         """Load Whisper shared libraries in correct dependency order."""
         try:
-            logger.debug(f"Loading libraries from: {self.lib_dir}")
-
             if not self.lib_dir.exists():
                 raise LibraryLoadError(
                     f"Library directory not found: {self.lib_dir}. "
@@ -204,21 +201,14 @@ class WhisperLibraryAdapter(ITranscriber):
                 f"{self.lib_dir}:{old_ld_path}" if old_ld_path else str(self.lib_dir)
             )
             os.environ["LD_LIBRARY_PATH"] = new_ld_path
-            logger.debug(f"Set LD_LIBRARY_PATH={new_ld_path}")
 
             # Load dependencies in correct order
-            logger.debug("Loading libggml-base.so.0...")
             ctypes.CDLL(
                 str(self.lib_dir / "libggml-base.so.0"), mode=ctypes.RTLD_GLOBAL
             )
-
-            logger.debug("Loading libggml-cpu.so.0...")
             ctypes.CDLL(str(self.lib_dir / "libggml-cpu.so.0"), mode=ctypes.RTLD_GLOBAL)
-
-            logger.debug("Loading libggml.so.0...")
             ctypes.CDLL(str(self.lib_dir / "libggml.so.0"), mode=ctypes.RTLD_GLOBAL)
 
-            logger.debug("Loading libwhisper.so...")
             with capture_native_logs("whisper_load", level="debug"):
                 self.lib = ctypes.CDLL(str(self.lib_dir / "libwhisper.so"))
 
@@ -232,7 +222,6 @@ class WhisperLibraryAdapter(ITranscriber):
     def _initialize_context(self) -> None:
         """Initialize Whisper context from model file."""
         try:
-            logger.debug(f"Initializing Whisper context from: {self.model_path}")
 
             if not self.model_path.exists():
                 raise ModelInitError(
@@ -281,8 +270,6 @@ class WhisperLibraryAdapter(ITranscriber):
             TranscriptionError: If transcription fails
         """
         try:
-            logger.debug(f"Transcribing: {audio_path} (language={language})")
-
             if not os.path.exists(audio_path):
                 raise TranscriptionError(f"Audio file not found: {audio_path}")
 
@@ -337,8 +324,6 @@ class WhisperLibraryAdapter(ITranscriber):
             data = json.loads(result.stdout)
 
             duration = float(data["format"]["duration"])
-            logger.debug(f"Detected audio duration: {duration:.2f}s")
-
             return duration
 
         except subprocess.CalledProcessError as e:
@@ -355,7 +340,6 @@ class WhisperLibraryAdapter(ITranscriber):
         """Direct transcription without chunking (fast path)."""
         audio_data, audio_duration = self._load_audio(audio_path)
         result = self._call_whisper_full(audio_data, language, audio_duration)
-        logger.debug(f"Transcription successful: {len(result['text'])} chars")
         return result["text"]
 
     def _transcribe_chunked(
@@ -416,7 +400,6 @@ class WhisperLibraryAdapter(ITranscriber):
                     try:
                         if os.path.exists(chunk_path):
                             os.remove(chunk_path)
-                            logger.debug(f"Cleaned up chunk file: {chunk_path}")
                     except Exception as e:
                         logger.warning(f"Failed to cleanup chunk file: {e}")
 
@@ -442,10 +425,6 @@ class WhisperLibraryAdapter(ITranscriber):
     ) -> list[str]:
         """Split audio into chunks using FFmpeg."""
         try:
-            logger.debug(
-                f"Starting audio split: duration={duration}, chunk_duration={chunk_duration}, overlap={overlap}"
-            )
-
             chunks = []
             start = 0.0
 
@@ -548,9 +527,8 @@ class WhisperLibraryAdapter(ITranscriber):
 
         Detects and removes duplicate text at chunk boundaries caused by overlap.
         """
-        # Task 4.2.2: Handle edge cases - empty chunks
+        # Handle edge cases - empty chunks
         if not chunk_texts:
-            logger.debug("No chunks to merge")
             return ""
 
         # Filter out empty chunks and [inaudible] markers for merge logic
@@ -566,7 +544,6 @@ class WhisperLibraryAdapter(ITranscriber):
             return ""
 
         if len(valid_texts) == 1:
-            logger.debug("Only one valid chunk, no merge needed")
             return valid_texts[0]
 
         # Task 4.2.1: Implement duplicate detection at boundaries
@@ -603,9 +580,6 @@ class WhisperLibraryAdapter(ITranscriber):
             if overlap_start > 0:
                 current = " ".join(curr_words[overlap_start:])
                 duplicates_removed += overlap_start
-                logger.debug(
-                    f"Removed {overlap_start} duplicate words at chunk boundary {i}"
-                )
 
             if current.strip():
                 merged_parts.append(current.strip())
@@ -650,8 +624,6 @@ class WhisperLibraryAdapter(ITranscriber):
         """Load audio file and convert to format expected by Whisper."""
         try:
             import librosa
-
-            logger.debug(f"Loading audio file: {audio_path}")
 
             audio_data, sample_rate = librosa.load(
                 audio_path,
@@ -761,7 +733,6 @@ class WhisperLibraryAdapter(ITranscriber):
                 self.lib.whisper_free.argtypes = [ctypes.c_void_p]
                 self.lib.whisper_free.restype = None
                 self.lib.whisper_free(self.ctx)
-                logger.debug("Old context freed")
             except Exception as e:
                 logger.warning(
                     f"Failed to free old context (may already be invalid): {e}"
@@ -807,10 +778,6 @@ class WhisperLibraryAdapter(ITranscriber):
         WARNING: This method is NOT thread-safe. Use _call_whisper_full() instead.
         """
         try:
-            logger.debug(
-                f"Starting Whisper inference (language={language}, lock_acquired=True)"
-            )
-
             # Define WhisperFullParams structure matching whisper.cpp
             # This structure must match the C struct layout exactly
             class WhisperFullParams(ctypes.Structure):
@@ -926,7 +893,6 @@ class WhisperLibraryAdapter(ITranscriber):
 
             # Get default params (strategy 0 = WHISPER_SAMPLING_GREEDY)
             params = self.lib.whisper_full_default_params(0)
-            logger.debug("Got default whisper params")
 
             # Explicitly disable VAD
             params.vad = False
@@ -938,21 +904,12 @@ class WhisperLibraryAdapter(ITranscriber):
             if n_threads == 0:
                 cpu_count = os.cpu_count() or 4
                 n_threads = min(cpu_count, 8)
-                logger.debug(
-                    f"Auto-detected {cpu_count} CPUs, using {n_threads} threads"
-                )
-            else:
-                logger.debug(f"Using configured WHISPER_N_THREADS={n_threads}")
 
             params.n_threads = n_threads
             logger.info(f"Whisper inference configured with {n_threads} threads")
 
             n_samples = len(audio_data)
             audio_array = (ctypes.c_float * n_samples)(*audio_data)
-
-            logger.debug(
-                f"Calling whisper_full with {n_samples} samples (language={language})"
-            )
             start_time = time.time()
 
             result = self.lib.whisper_full(
@@ -968,9 +925,6 @@ class WhisperLibraryAdapter(ITranscriber):
                 raise TranscriptionError(f"whisper_full returned error code: {result}")
 
             n_segments = self.lib.whisper_full_n_segments(self.ctx)
-            logger.debug(
-                f"Whisper inference completed: {n_segments} segments in {inference_time:.2f}s"
-            )
 
             if n_segments == 0:
                 logger.warning(
@@ -1028,15 +982,17 @@ class WhisperLibraryAdapter(ITranscriber):
 
     def __del__(self):
         """Clean up Whisper context on deletion"""
-        if self.ctx and self.lib:
+        # Use getattr to safely check attributes (may not exist if __init__ failed)
+        ctx = getattr(self, "ctx", None)
+        lib = getattr(self, "lib", None)
+
+        if ctx and lib:
             try:
-                logger.debug("Freeing Whisper context...")
-                self.lib.whisper_free.argtypes = [ctypes.c_void_p]
-                self.lib.whisper_free.restype = None
-                self.lib.whisper_free(self.ctx)
-                logger.debug("Whisper context freed")
-            except Exception as e:
-                logger.error(f"Error freeing Whisper context: {e}")
+                lib.whisper_free.argtypes = [ctypes.c_void_p]
+                lib.whisper_free.restype = None
+                lib.whisper_free(ctx)
+            except Exception:
+                pass  # Ignore cleanup errors
 
 
 # Global singleton instance

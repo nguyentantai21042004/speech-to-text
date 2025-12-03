@@ -55,7 +55,7 @@ def test_transcription(audio_path: str, language: str = "en", description: str =
     with open(audio_path, "rb") as f:
         audio_data = f.read()
 
-    logger.debug(f"Audio data size: {len(audio_data)} bytes")
+    logger.info(f"Audio data size: {len(audio_data)} bytes")
 
     # Transcribe
     start_time = time.time()

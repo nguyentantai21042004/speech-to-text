@@ -176,7 +176,6 @@ MP3, WAV, M4A, MP4, AAC, OGG, FLAC, WMA, WEBM, MKV, AVI, MOV
         ]
 
         # Create FastAPI application
-        logger.debug("Configuring FastAPI instance...")
         app = FastAPI(
             title=settings.app_name,
             version=settings.app_version,
@@ -192,10 +191,8 @@ MP3, WAV, M4A, MP4, AAC, OGG, FLAC, WMA, WEBM, MKV, AVI, MOV
             redoc_url="/redoc",
             openapi_url="/openapi.json",
         )
-        logger.debug("FastAPI instance configured")
 
         # Add CORS middleware
-        logger.debug("Adding CORS middleware...")
         app.add_middleware(
             CORSMiddleware,
             allow_origins=["*"],  # Configure appropriately for production
@@ -203,11 +200,8 @@ MP3, WAV, M4A, MP4, AAC, OGG, FLAC, WMA, WEBM, MKV, AVI, MOV
             allow_methods=["*"],
             allow_headers=["*"],
         )
-        logger.debug("CORS middleware added")
 
         # Mount swagger static files for domain/stt/swagger/index.html access
-        # This allows reverse proxy to serve swagger UI at domain/stt/swagger/
-        logger.debug("Mounting swagger static files...")
         try:
             from pathlib import Path
 
@@ -226,8 +220,7 @@ MP3, WAV, M4A, MP4, AAC, OGG, FLAC, WMA, WEBM, MKV, AVI, MOV
         except Exception as e:
             logger.warning(f"Failed to mount swagger static files: {e}")
 
-        # Include all API routes
-        logger.debug("Including API routes...")
+        # Include API routes
 
         # Transcribe routes (Stateless)
         app.include_router(transcribe_router)

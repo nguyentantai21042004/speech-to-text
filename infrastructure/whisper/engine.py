@@ -29,7 +29,6 @@ class WhisperTranscriber:
 
     def __init__(self):
         """Initialize Whisper transcriber."""
-        logger.debug("WhisperTranscriber initialized")
         self._validate_whisper_setup()
         self._model_path_cache: dict[str, str] = {}
         self._model_downloader = None
@@ -42,7 +41,6 @@ class WhisperTranscriber:
             FileNotFoundError: If executable or model not found
         """
         try:
-            logger.debug("Validating Whisper setup...")
 
             # Check executable exists
             if not os.path.exists(settings.whisper_executable):
@@ -67,10 +65,6 @@ class WhisperTranscriber:
                 )
                 logger.error(f"{error_msg}")
                 raise STTFileNotFoundError(error_msg)
-
-            logger.debug(
-                f"Whisper setup validated: executable={settings.whisper_executable}"
-            )
 
         except Exception as e:
             logger.error(f"Whisper setup validation failed: {e}")
@@ -113,28 +107,17 @@ class WhisperTranscriber:
                 logger.error(f"{error_msg}")
                 raise STTFileNotFoundError(error_msg)
 
-            # Get file size
-            file_size_mb = os.path.getsize(audio_path) / (1024 * 1024)
-            logger.debug(f"Audio file size: {file_size_mb:.2f}MB")
-
             # Build Whisper command
             command = self._build_command(audio_path, language, model)
-            logger.debug(f"Whisper command: {' '.join(command)}")
 
             # Execute Whisper
             timeout = timeout or settings.chunk_timeout
-            logger.debug(f"Executing Whisper with timeout: {timeout}s")
 
             result = subprocess.run(
                 command, capture_output=True, text=True, timeout=timeout, check=False
             )
 
             elapsed_time = time.time() - start_time
-            logger.debug(f"⏱️ Whisper execution completed in {elapsed_time:.2f}s")
-
-            # Log full stderr for debugging (especially if stdout is empty)
-            if result.stderr:
-                logger.debug(f"Whisper stderr (full): {result.stderr}")
 
             # Check for errors
             if result.returncode != 0:
@@ -151,21 +134,9 @@ class WhisperTranscriber:
             # Parse output
             transcription = self._parse_output(result.stdout, result.stderr, audio_path)
 
-            # If stdout is empty but process succeeded, check output file
-            if not transcription and result.returncode == 0:
-                logger.debug(f"Whisper stdout empty, checking output file...")
-                logger.debug(f"Command: {' '.join(command)}")
-                logger.debug(
-                    f"Stdout: {result.stdout[:200] if result.stdout else '(empty)'}"
-                )
-                logger.debug(
-                    f"Stderr: {result.stderr[:200] if result.stderr else '(empty)'}"
-                )
-
             logger.info(
                 f"Transcription successful: length={len(transcription)} chars, time={elapsed_time:.2f}s"
             )
-            logger.debug(f"Transcription preview: {transcription[:100]}...")
 
             # Log performance metrics
             chars_per_second = (
@@ -203,10 +174,6 @@ class WhisperTranscriber:
         Auto-downloads model from MinIO if not present locally.
         """
         try:
-            logger.debug(
-                f"Building Whisper command for model={model}, language={language}"
-            )
-
             if model in self._model_path_cache:
                 model_path = self._model_path_cache[model]
             else:
@@ -215,7 +182,6 @@ class WhisperTranscriber:
 
                 model_path = self._model_downloader.ensure_model_exists(model)
                 self._model_path_cache[model] = model_path
-                logger.debug(f"Model '{model}' ensured and cached: {model_path}")
 
             command = [
                 settings.whisper_executable,
@@ -243,7 +209,6 @@ class WhisperTranscriber:
             if settings.whisper_suppress_regex:
                 command.extend(["--suppress-regex", settings.whisper_suppress_regex])
 
-            logger.debug(f"Command built: {len(command)} arguments")
             return command
 
         except Exception as e:
@@ -254,22 +219,12 @@ class WhisperTranscriber:
     def _parse_output(self, stdout: str, stderr: str, audio_path: str = None) -> str:
         """Parse Whisper output to extract transcription."""
         try:
-            logger.debug("Parsing Whisper output...")
-
-            if stderr:
-                logger.debug(f"Whisper stderr: {stderr[:500]}...")
-
             transcription_text = ""
 
             if stdout and stdout.strip():
                 transcription_text = stdout.strip()
-                logger.debug(
-                    f"Found transcription in stdout: {len(transcription_text)} chars"
-                )
             else:
-                logger.debug(
-                    "No transcription in stdout, checking if transcription is in stderr..."
-                )
+                # Check if transcription is in stderr
                 if stderr and stderr.strip():
                     stderr_lower = stderr.lower()
                     is_error = any(
@@ -278,9 +233,6 @@ class WhisperTranscriber:
                     )
 
                     if not is_error and len(stderr.strip()) > 10:
-                        logger.debug(
-                            "Stderr might contain transcription, trying to parse..."
-                        )
                         transcription_text = stderr.strip()
 
             if not transcription_text:
@@ -290,7 +242,6 @@ class WhisperTranscriber:
             transcription_text = transcription_text.strip()
             transcription_text = " ".join(transcription_text.split())
 
-            logger.debug(f"Output parsed: {len(transcription_text)} chars")
             return transcription_text
 
         except Exception as e:
