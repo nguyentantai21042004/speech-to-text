@@ -101,6 +101,14 @@ A high-performance **stateless** Speech-to-Text (STT) API built with **FastAPI**
 | **Pydantic** | 2.5+ | Data validation |
 | **httpx** | Latest | Async HTTP client |
 | **Whisper.cpp** | Latest | Speech-to-text engine |
+| **Loguru** | Latest | Structured logging |
+
+### Code Organization
+| Module | Purpose |
+|--------|---------|
+| **core/constants.py** | Centralized constants (Audio, HTTP, Whisper configs) |
+| **core/errors.py** | Centralized exceptions (STT, Whisper, Audio errors) |
+| **core/messages.py** | Error and log message templates |
 
 ### Audio Processing
 | Library | Purpose |
@@ -475,8 +483,10 @@ speech2text/
 │       └── main.py           # FastAPI application
 ├── core/                     # Core configuration and utilities
 │   ├── config.py             # Settings management
+│   ├── constants.py          # Centralized constants (Audio, HTTP, Whisper)
+│   ├── errors.py             # Centralized exceptions (STT, Whisper, Audio)
+│   ├── messages.py           # Error/log message templates
 │   ├── logger.py             # Logging setup
-│   ├── errors.py             # Custom exceptions
 │   ├── dependencies.py       # Dependency validation
 │   └── container.py          # DI container
 ├── internal/

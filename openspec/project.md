@@ -114,10 +114,11 @@ speech2text/
 │       └── swagger_static/     # Swagger UI static files
 ├── core/                       # Core configuration and utilities
 │   ├── config.py               # Settings management (Pydantic Settings)
-│   ├── constants.py            # Application constants
+│   ├── constants.py            # Centralized constants (Audio, HTTP, Whisper, Benchmark)
 │   ├── container.py            # Dependency injection container
 │   ├── dependencies.py         # System dependency validation
-│   ├── errors.py               # Custom exceptions hierarchy
+│   ├── errors.py               # Centralized exceptions (STT, Whisper, Audio errors)
+│   ├── messages.py             # Centralized error/log message templates
 │   └── logger.py               # Loguru logging setup
 ├── internal/                   # Internal API implementation
 │   └── api/
@@ -185,8 +186,21 @@ speech2text/
 
 ### Error Hierarchy (`core/errors.py`)
 - **STTError**: Base exception
-- **TransientError**: Retryable (OutOfMemoryError, TimeoutError, WhisperCrashError, NetworkError)
-- **PermanentError**: Non-retryable (InvalidAudioFormatError, FileTooLargeError, TranscriptionError)
+- **TransientError**: Retryable (OutOfMemoryError, TimeoutError, WhisperCrashError, NetworkError, ChunkProcessingError)
+- **PermanentError**: Non-retryable (InvalidAudioFormatError, FileTooLargeError, TranscriptionError, AudioFileNotFoundError)
+- **WhisperLibraryError**: Library-specific errors (LibraryLoadError, ModelInitError)
+
+### Centralized Constants (`core/constants.py`)
+All application constants are centralized in `core/constants.py`:
+- **Audio Processing**: `MIN_CHUNK_DURATION`, `AUDIO_SILENCE_THRESHOLD`, `AUDIO_NOISE_THRESHOLD`
+- **HTTP Client**: `HTTP_MAX_CONNECTIONS`, `HTTP_READ_TIMEOUT`, `HTTP_CONNECT_TIMEOUT`, etc.
+- **Whisper Models**: `WHISPER_MODEL_CONFIGS` (library adapter), `WHISPER_DOWNLOAD_CONFIGS` (downloader)
+- **Benchmark**: `BENCHMARK_DEFAULT_ITERATIONS`, `BENCHMARK_CPU_COUNTS`
+
+### Message Templates (`core/messages.py`)
+Centralized error and log message templates:
+- **ErrorMessages**: Standardized error message templates
+- **LogMessages**: Standardized log message templates
 
 ## Development Workflow
 
