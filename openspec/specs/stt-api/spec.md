@@ -17,23 +17,115 @@ The system SHALL expose the Speech-to-Text API documentation at `domain/swagger/
 - **THEN** the service SHALL continue serving the default FastAPI interactive docs to avoid breaking existing tooling.
 
 ### Requirement: Presigned URL Transcription API
-The system SHALL expose a POST `/transcribe` endpoint that accepts a JSON payload with `media_url` (MinIO presigned URL) and optional `language` hint, secured by an internal API key header, and returns transcription metadata.
+The system SHALL expose a POST `/transcribe` endpoint with unified response format.
 
 #### Scenario: Successful transcription
-- **WHEN** the crawler sends a POST request with a valid API key header and JSON body containing `media_url` and `language`
-- **THEN** the service SHALL stream-download the media without storing it permanently
-- **AND** it SHALL transcribe the audio (detected or extracted via ffmpeg) using the configured Whisper backend
-- **AND** it SHALL respond with HTTP 200 and JSON fields `status`, `transcription`, `duration`, `confidence`, `processing_time`.
+- **WHEN** client sends valid transcription request
+- **THEN** the service SHALL return HTTP 200 with unified format:
+  ```json
+  {
+    "error_code": 0,
+    "message": "Transcription successful",
+    "data": {
+      "transcription": "...",
+      "duration": 45.5,
+      "confidence": 0.98,
+      "processing_time": 12.3
+    }
+  }
+  ```
 
-#### Scenario: Enforce authentication
-- **WHEN** the request is missing the internal API key or provides an invalid key
-- **THEN** the service SHALL return HTTP 401 with an error payload and skip any media download or inference work.
+#### Scenario: Transcription error
+- **WHEN** transcription fails
+- **THEN** the service SHALL return appropriate HTTP status with unified error format:
+  ```json
+  {
+    "error_code": 1,
+    "message": "Transcription failed",
+    "errors": {
+      "detail": "Download failed: 403 Forbidden"
+    }
+  }
+  ```
 
-#### Scenario: Enforce inference timeout
-- **WHEN** inference exceeds the configured timeout threshold (default 30 seconds)
-- **THEN** the service SHALL abort processing, clean up temporary files, and return HTTP 504 (or HTTP 200 with `status=timeout` per response contract) so the crawler can retry gracefully.
+### Requirement: Async Transcription Job Submission
+The system SHALL expose a POST `/api/v1/transcribe` endpoint that accepts a JSON payload with `request_id` (client-generated) and `audio_url` (presigned URL), stores job state in Redis, and returns 202 Accepted with unified response format.
 
-#### Scenario: Handle invalid media URL
-- **WHEN** the provided `media_url` cannot be fetched (4xx/5xx) or is not reachable within network/timeouts
-- **THEN** the service SHALL return an error payload describing the fetch failure and SHALL not attempt transcription.
+#### Scenario: Submit new job successfully
+- **WHEN** client sends POST `/api/v1/transcribe` with valid `request_id` and `audio_url`
+- **THEN** the service SHALL return HTTP 202 with unified JSON format:
+  ```json
+  {
+    "error_code": 0,
+    "message": "Job submitted successfully",
+    "data": {
+      "request_id": "...",
+      "status": "PROCESSING"
+    }
+  }
+  ```
+
+#### Scenario: Submit duplicate job (idempotency)
+- **WHEN** client sends POST `/api/v1/transcribe` with `request_id` that already exists
+- **THEN** the service SHALL return HTTP 202 with current job status wrapped in `data` field
+
+#### Scenario: Validation error
+- **WHEN** client sends invalid request (missing fields, invalid URL)
+- **THEN** the service SHALL return HTTP 422 with unified error format:
+  ```json
+  {
+    "error_code": 1,
+    "message": "Validation error",
+    "errors": {
+      "media_url": "media_url must start with http://, https://, or minio://"
+    }
+  }
+  ```
+
+### Requirement: Async Transcription Status Polling
+The system SHALL expose a GET `/api/v1/transcribe/{request_id}` endpoint that returns current job status in unified response format.
+
+#### Scenario: Job completed successfully
+- **WHEN** client polls a completed job
+- **THEN** the service SHALL return HTTP 200 with unified format:
+  ```json
+  {
+    "error_code": 0,
+    "message": "Transcription completed",
+    "data": {
+      "request_id": "...",
+      "status": "COMPLETED",
+      "transcription": "...",
+      "duration": 45.5,
+      "confidence": 0.98,
+      "processing_time": 12.3
+    }
+  }
+  ```
+
+#### Scenario: Job not found
+- **WHEN** client polls non-existent job
+- **THEN** the service SHALL return HTTP 404 with unified error format:
+  ```json
+  {
+    "error_code": 1,
+    "message": "Job not found",
+    "errors": {
+      "request_id": "Job xxx does not exist or has expired"
+    }
+  }
+  ```
+
+### Requirement: Redis Job State Management
+The system SHALL use Redis to store and manage async job states with automatic expiration.
+
+#### Scenario: Job state TTL
+- **WHEN** a job is created or updated in Redis
+- **THEN** the key SHALL have TTL of 3600 seconds (1 hour)
+- **AND** the key SHALL be automatically deleted after TTL expires
+
+#### Scenario: Redis connection failure
+- **WHEN** Redis is unavailable during job submission
+- **THEN** the service SHALL return HTTP 503 Service Unavailable
+- **AND** the health check SHALL report unhealthy status
 

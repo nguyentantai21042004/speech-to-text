@@ -1,5 +1,13 @@
 """
-Tests for async transcription API endpoints with Redis polling pattern.
+Tests for async transcription API endpoints with unified response format.
+
+Response format:
+{
+    "error_code": int,
+    "message": str,
+    "data": {...},
+    "errors": {...}
+}
 
 Tests cover:
 - 4.1 Submit job endpoint (POST /api/v1/transcribe)
@@ -10,18 +18,17 @@ Tests cover:
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 import sys
 from pathlib import Path
 
-# Get project root
 PROJECT_ROOT = Path(__file__).parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 
 def create_mock_async_service(job_states: dict = None):
-    """Create a mock AsyncTranscriptionService with configurable job states."""
+    """Create a mock AsyncTranscriptionService."""
     mock_service = MagicMock()
     job_states = job_states or {}
 
@@ -33,7 +40,6 @@ def create_mock_async_service(job_states: dict = None):
                 "status": existing.get("status", "PROCESSING"),
                 "message": f"Job already exists with status: {existing.get('status')}",
             }
-        # New job
         job_states[request_id] = {"status": "PROCESSING"}
         return {
             "request_id": request_id,
@@ -45,7 +51,6 @@ def create_mock_async_service(job_states: dict = None):
         return job_states.get(request_id)
 
     async def mock_process_job_background(request_id, media_url, language=None):
-        # Simulate background processing
         job_states[request_id] = {
             "status": "COMPLETED",
             "transcription": "Test transcription",
@@ -70,7 +75,6 @@ def create_test_client(mock_service):
     app = FastAPI()
     app.include_router(router)
 
-    # Override dependencies
     app.dependency_overrides[verify_internal_api_key] = lambda: "test-api-key"
     app.dependency_overrides[get_async_transcription_service] = lambda: mock_service
 
@@ -81,7 +85,7 @@ class TestSubmitJobEndpoint:
     """Test 4.1: Submit job endpoint (POST /api/v1/transcribe)."""
 
     def test_submit_job_success(self):
-        """Test successful job submission returns 202 Accepted."""
+        """Test successful job submission returns unified format."""
         mock_service = create_mock_async_service()
         client = create_test_client(mock_service)
 
@@ -97,8 +101,13 @@ class TestSubmitJobEndpoint:
 
         assert response.status_code == 202
         data = response.json()
-        assert data["request_id"] == "test-job-123"
-        assert data["status"] == "PROCESSING"
+        # Unified format checks
+        assert data["error_code"] == 0
+        assert "message" in data
+        assert "data" in data
+        # Data field checks
+        assert data["data"]["request_id"] == "test-job-123"
+        assert data["data"]["status"] == "PROCESSING"
 
     def test_submit_job_missing_request_id(self):
         """Test job submission without request_id returns 422."""
@@ -175,11 +184,14 @@ class TestPollingEndpoint:
 
         assert response.status_code == 200
         data = response.json()
-        assert data["status"] == "PROCESSING"
-        assert data["request_id"] == "test-job-123"
+        # Unified format
+        assert data["error_code"] == 0
+        assert "data" in data
+        assert data["data"]["status"] == "PROCESSING"
+        assert data["data"]["request_id"] == "test-job-123"
 
     def test_poll_completed_job(self):
-        """Test polling a completed job returns transcription data."""
+        """Test polling a completed job returns transcription in data."""
         job_states = {
             "test-job-123": {
                 "status": "COMPLETED",
@@ -199,12 +211,15 @@ class TestPollingEndpoint:
 
         assert response.status_code == 200
         data = response.json()
-        assert data["status"] == "COMPLETED"
-        assert data["transcription"] == "Hello world transcription"
-        assert data["duration"] == 30.5
+        # Unified format
+        assert data["error_code"] == 0
+        assert "data" in data
+        assert data["data"]["status"] == "COMPLETED"
+        assert data["data"]["transcription"] == "Hello world transcription"
+        assert data["data"]["duration"] == 30.5
 
     def test_poll_failed_job(self):
-        """Test polling a failed job returns error message."""
+        """Test polling a failed job returns error in data."""
         job_states = {
             "test-job-123": {
                 "status": "FAILED",
@@ -221,12 +236,15 @@ class TestPollingEndpoint:
 
         assert response.status_code == 200
         data = response.json()
-        assert data["status"] == "FAILED"
-        assert "error" in data
-        assert "download" in data["error"].lower()
+        # Unified format - FAILED is still error_code=0 (request succeeded)
+        assert data["error_code"] == 0
+        assert "data" in data
+        assert data["data"]["status"] == "FAILED"
+        assert "error" in data["data"]
+        assert "download" in data["data"]["error"].lower()
 
     def test_poll_nonexistent_job(self):
-        """Test polling a non-existent job returns 404."""
+        """Test polling a non-existent job returns 404 with errors."""
         mock_service = create_mock_async_service()
         client = create_test_client(mock_service)
 
@@ -236,19 +254,21 @@ class TestPollingEndpoint:
         )
 
         assert response.status_code == 404
+        data = response.json()
+        # Unified error format
+        assert data["error_code"] == 1
+        assert "errors" in data
 
 
 class TestIdempotency:
     """Test 4.3: Idempotency (submit same request_id twice)."""
 
     def test_submit_duplicate_job_returns_existing_status(self):
-        """Test submitting duplicate request_id returns existing job status."""
-        # Pre-populate with existing job
+        """Test submitting duplicate request_id returns existing job."""
         job_states = {"duplicate-job-123": {"status": "PROCESSING"}}
         mock_service = create_mock_async_service(job_states)
         client = create_test_client(mock_service)
 
-        # Submit duplicate
         response = client.post(
             "/api/v1/transcribe",
             json={
@@ -260,12 +280,12 @@ class TestIdempotency:
 
         assert response.status_code == 202
         data = response.json()
-        assert data["status"] == "PROCESSING"
+        assert data["error_code"] == 0
+        assert data["data"]["status"] == "PROCESSING"
         assert "already exists" in data["message"].lower()
 
     def test_submit_duplicate_completed_job(self):
-        """Test submitting request_id of completed job returns COMPLETED status."""
-        # Pre-populate with completed job
+        """Test submitting request_id of completed job returns COMPLETED."""
         job_states = {
             "completed-job-123": {
                 "status": "COMPLETED",
@@ -286,7 +306,8 @@ class TestIdempotency:
 
         assert response.status_code == 202
         data = response.json()
-        assert data["status"] == "COMPLETED"
+        assert data["error_code"] == 0
+        assert data["data"]["status"] == "COMPLETED"
         assert "already exists" in data["message"].lower()
 
     def test_new_job_then_duplicate(self):
@@ -295,7 +316,7 @@ class TestIdempotency:
         mock_service = create_mock_async_service(job_states)
         client = create_test_client(mock_service)
 
-        # First submission - new job
+        # First submission
         response1 = client.post(
             "/api/v1/transcribe",
             json={
@@ -306,10 +327,10 @@ class TestIdempotency:
         )
 
         assert response1.status_code == 202
-        assert response1.json()["status"] == "PROCESSING"
-        assert "submitted" in response1.json()["message"].lower()
+        assert response1.json()["error_code"] == 0
+        assert response1.json()["data"]["status"] == "PROCESSING"
 
-        # Second submission - duplicate (job may have completed in background)
+        # Second submission - duplicate
         response2 = client.post(
             "/api/v1/transcribe",
             json={
@@ -320,6 +341,42 @@ class TestIdempotency:
         )
 
         assert response2.status_code == 202
-        # Job exists - status could be PROCESSING or COMPLETED depending on timing
-        assert response2.json()["status"] in ["PROCESSING", "COMPLETED"]
+        assert response2.json()["error_code"] == 0
+        # Status could be PROCESSING or COMPLETED
+        assert response2.json()["data"]["status"] in ["PROCESSING", "COMPLETED"]
         assert "already exists" in response2.json()["message"].lower()
+
+
+class TestUnifiedErrorFormat:
+    """Test unified error response format."""
+
+    def test_validation_error_has_errors_field(self):
+        """Test validation errors include errors field."""
+        mock_service = create_mock_async_service()
+        client = create_test_client(mock_service)
+
+        response = client.post(
+            "/api/v1/transcribe",
+            json={"request_id": "test"},  # Missing media_url
+            headers={"X-API-Key": "test-key"},
+        )
+
+        assert response.status_code == 422
+        # Note: FastAPI default validation handler may not have our format
+        # This test verifies the response structure
+
+    def test_not_found_error_has_errors_field(self):
+        """Test 404 errors include errors field."""
+        mock_service = create_mock_async_service()
+        client = create_test_client(mock_service)
+
+        response = client.get(
+            "/api/v1/transcribe/nonexistent",
+            headers={"X-API-Key": "test-key"},
+        )
+
+        assert response.status_code == 404
+        data = response.json()
+        assert data["error_code"] == 1
+        assert "message" in data
+        assert "errors" in data

@@ -65,6 +65,11 @@ spec:
             secretKeyRef:
               name: smap-stt-secrets
               key: MINIO_SECRET_KEY
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: smap-stt-secrets
+              key: REDIS_PASSWORD
 
         # Resource Limits (Optimized for Horizontal Scaling)
         # =================================================================

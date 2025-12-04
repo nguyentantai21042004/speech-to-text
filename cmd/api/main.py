@@ -23,7 +23,9 @@ from core.config import get_settings
 from core.logger import logger
 from core.dependencies import validate_dependencies
 from internal.api.routes.transcribe_routes import router as transcribe_router
-from internal.api.routes.async_transcribe_routes import router as async_transcribe_router
+from internal.api.routes.async_transcribe_routes import (
+    router as async_transcribe_router,
+)
 from internal.api.routes.health_routes import create_health_routes
 from internal.api.utils import error_response
 
@@ -240,43 +242,55 @@ MP3, WAV, M4A, MP4, AAC, OGG, FLAC, WMA, WEBM, MKV, AVI, MOV
         app.include_router(health_router)
         logger.info("Health routes registered")
 
-        # Add exception handlers for standard response format
+        # Add exception handlers for unified response format
         @app.exception_handler(RequestValidationError)
         async def validation_exception_handler(
             request: Request, exc: RequestValidationError
         ):
-            """Handle validation errors - return 422 status."""
-            errors = exc.errors()
-            error_msg = "; ".join([f"{e['loc'][-1]}: {e['msg']}" for e in errors])
+            """Handle validation errors - return 422 with errors field."""
+            raw_errors = exc.errors()
+            # Build errors dict: field -> message
+            errors_dict = {}
+            for e in raw_errors:
+                field = e["loc"][-1] if e["loc"] else "unknown"
+                errors_dict[str(field)] = e["msg"]
+
+            error_msg = "; ".join([f"{k}: {v}" for k, v in errors_dict.items()])
             logger.error(f"Validation error: {error_msg}")
+
             return JSONResponse(
                 status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
                 content=error_response(
-                    message=f"Validation error: {error_msg}", error_code=1
+                    message="Validation error",
+                    error_code=1,
+                    errors=errors_dict,
                 ),
             )
 
         @app.exception_handler(HTTPException)
         async def http_exception_handler(request: Request, exc: HTTPException):
-            """Handle HTTP exceptions - preserve status codes for auth/client errors."""
+            """Handle HTTP exceptions with unified format."""
             logger.error(f"HTTP error: {exc.detail}")
-            # For auth errors (401, 403) and client errors (4xx), keep original status
-            # For server errors (5xx), use 500
-            # For other cases, use the exception's status code
             return JSONResponse(
                 status_code=exc.status_code,
-                content=error_response(message=exc.detail, error_code=1),
+                content=error_response(
+                    message=exc.detail,
+                    error_code=1,
+                    errors={"detail": exc.detail},
+                ),
             )
 
         @app.exception_handler(Exception)
         async def general_exception_handler(request: Request, exc: Exception):
-            """Handle all other exceptions with standard response format."""
+            """Handle all other exceptions with unified format."""
             logger.error(f"Unhandled exception: {str(exc)}")
             logger.exception("Exception details:")
             return JSONResponse(
-                status_code=http_status.HTTP_200_OK,
+                status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
                 content=error_response(
-                    message=f"Internal server error: {str(exc)}", error_code=1
+                    message="Internal server error",
+                    error_code=1,
+                    errors={"detail": str(exc)},
                 ),
             )
 

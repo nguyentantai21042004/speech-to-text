@@ -50,9 +50,12 @@ X-API-Key: <your-api-key>
 **Response (202 Accepted):**
 ```json
 {
-  "request_id": "7577034049470926087",
-  "status": "PROCESSING",
-  "message": "Job submitted successfully"
+  "error_code": 0,
+  "message": "Job submitted successfully",
+  "data": {
+    "request_id": "7577034049470926087",
+    "status": "PROCESSING"
+  }
 }
 ```
 
@@ -76,39 +79,52 @@ X-API-Key: <your-api-key>
 #### PROCESSING (đang xử lý)
 ```json
 {
-  "request_id": "7577034049470926087",
-  "status": "PROCESSING",
-  "message": "Transcription in progress"
+  "error_code": 0,
+  "message": "Transcription in progress",
+  "data": {
+    "request_id": "7577034049470926087",
+    "status": "PROCESSING"
+  }
 }
 ```
 
 #### COMPLETED (hoàn thành)
 ```json
 {
-  "request_id": "7577034049470926087",
-  "status": "COMPLETED",
-  "message": "Transcription completed successfully",
-  "transcription": "Nội dung video đã được bóc tách...",
-  "duration": 45.5,
-  "confidence": 0.98,
-  "processing_time": 12.3
+  "error_code": 0,
+  "message": "Transcription completed",
+  "data": {
+    "request_id": "7577034049470926087",
+    "status": "COMPLETED",
+    "transcription": "Nội dung video đã được bóc tách...",
+    "duration": 45.5,
+    "confidence": 0.98,
+    "processing_time": 12.3
+  }
 }
 ```
 
 #### FAILED (lỗi)
 ```json
 {
-  "request_id": "7577034049470926087",
-  "status": "FAILED",
+  "error_code": 0,
   "message": "Transcription failed",
-  "error": "Failed to download audio file: 403 Forbidden"
+  "data": {
+    "request_id": "7577034049470926087",
+    "status": "FAILED",
+    "error": "Failed to download audio file: 403 Forbidden"
+  }
 }
 ```
 
 #### NOT FOUND (404)
 ```json
 {
-  "detail": "Job not found: 7577034049470926087"
+  "error_code": 1,
+  "message": "Job not found",
+  "errors": {
+    "request_id": "Job 7577034049470926087 does not exist or has expired"
+  }
 }
 ```
 
@@ -183,11 +199,11 @@ def get_stt_result(audio_url: str, post_id: str, api_key: str) -> Optional[str]:
                 status = data.get("status")
                 
                 if status == "COMPLETED":
-                    print(f"Transcription completed in {data.get('processing_time', 0):.1f}s")
-                    return data.get("transcription")
+                    print(f"Transcription completed in {data['data'].get('processing_time', 0):.1f}s")
+                    return data["data"].get("transcription")
                 
                 if status == "FAILED":
-                    print(f"Transcription failed: {data.get('error')}")
+                    print(f"Transcription failed: {data['data'].get('error')}")
                     return None
                 
                 # PROCESSING - tiếp tục polling
@@ -275,10 +291,10 @@ async def get_stt_result_async(
                 status = data.get("status")
                 
                 if status == "COMPLETED":
-                    return data.get("transcription")
+                    return data["data"].get("transcription")
                     
                 if status == "FAILED":
-                    print(f"Failed: {data.get('error')}")
+                    print(f"Failed: {data['data'].get('error')}")
                     return None
                     
             except httpx.HTTPError:
