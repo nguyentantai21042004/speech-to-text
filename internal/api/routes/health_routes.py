@@ -126,6 +126,17 @@ def create_health_routes(app) -> APIRouter:
         model_init_timestamp = getattr(app.state, "model_init_timestamp", None)
         model_init_error = getattr(app.state, "model_init_error", None)
 
+        # Check Redis health
+        redis_healthy = False
+        redis_error = None
+        try:
+            from infrastructure.redis import get_redis_client
+
+            redis_client = get_redis_client()
+            redis_healthy = redis_client.ping()
+        except Exception as e:
+            redis_error = str(e)
+
         # Build model info
         model_info = {
             "initialized": model_initialized,
@@ -141,7 +152,13 @@ def create_health_routes(app) -> APIRouter:
         if not model_initialized and model_init_error:
             model_info["error"] = model_init_error
 
+        # Build Redis info
+        redis_info = {"healthy": redis_healthy}
+        if redis_error:
+            redis_info["error"] = redis_error
+
         # Determine overall health status
+        # Service is healthy if model is initialized (Redis is optional for backward compatibility)
         status = "healthy" if model_initialized else "unhealthy"
         message = (
             "Service is healthy"
@@ -155,9 +172,10 @@ def create_health_routes(app) -> APIRouter:
             version=settings.app_version,
         )
 
-        # Convert Pydantic model to dict and add model info
+        # Convert Pydantic model to dict and add model info and redis info
         health_dict = health_data.model_dump()
         health_dict["model"] = model_info
+        health_dict["redis"] = redis_info
 
         return success_response(message=message, data=health_dict)
 

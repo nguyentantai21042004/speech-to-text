@@ -97,6 +97,15 @@ class Settings(BaseSettings):
         default=30, alias="TRANSCRIBE_TIMEOUT_SECONDS"
     )
 
+    # Redis Configuration (for async job state management)
+    redis_host: str = Field(default="localhost", alias="REDIS_HOST")
+    redis_port: int = Field(default=6379, alias="REDIS_PORT")
+    redis_password: str = Field(default="", alias="REDIS_PASSWORD")
+    redis_db: int = Field(default=0, alias="REDIS_DB")
+    redis_job_ttl: int = Field(
+        default=3600, alias="REDIS_JOB_TTL"
+    )  # TTL in seconds (1 hour)
+
 
 @lru_cache()
 def get_settings() -> Settings:

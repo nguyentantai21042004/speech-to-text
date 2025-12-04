@@ -23,6 +23,7 @@ from core.config import get_settings
 from core.logger import logger
 from core.dependencies import validate_dependencies
 from internal.api.routes.transcribe_routes import router as transcribe_router
+from internal.api.routes.async_transcribe_routes import router as async_transcribe_router
 from internal.api.routes.health_routes import create_health_routes
 from internal.api.utils import error_response
 
@@ -170,6 +171,10 @@ MP3, WAV, M4A, MP4, AAC, OGG, FLAC, WMA, WEBM, MKV, AVI, MOV
                 "description": "Direct audio transcription from URL.",
             },
             {
+                "name": "Async Transcription",
+                "description": "Async transcription with polling pattern for long-running jobs.",
+            },
+            {
                 "name": "Health",
                 "description": "Health check endpoints for monitoring API status.",
             },
@@ -225,6 +230,10 @@ MP3, WAV, M4A, MP4, AAC, OGG, FLAC, WMA, WEBM, MKV, AVI, MOV
         # Transcribe routes (Stateless)
         app.include_router(transcribe_router)
         logger.info("Transcribe routes registered")
+
+        # Async transcribe routes (with Redis polling)
+        app.include_router(async_transcribe_router)
+        logger.info("Async transcribe routes registered")
 
         # Health routes (no prefix - uses root "/" and "/health")
         health_router = create_health_routes(app)

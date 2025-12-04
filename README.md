@@ -7,6 +7,7 @@ A high-performance **stateless** Speech-to-Text (STT) API built with **FastAPI**
 ## Key Features
 
 ### Core Capabilities
+
 - **Direct Transcription** - Transcribe audio from URL with a single API call
 - **Stateless Architecture** - No database, no message queue, no object storage
 - **High-Quality STT** - Powered by Whisper.cpp with anti-hallucination filters
@@ -14,6 +15,7 @@ A high-performance **stateless** Speech-to-Text (STT) API built with **FastAPI**
 - **Production-Ready** - Comprehensive logging, error handling, and health monitoring
 
 ### Dynamic Model Loading
+
 - **Runtime Model Switching** - Change between small/medium models via environment variable
 - **90% Faster** - Direct C library integration eliminates subprocess overhead
 - **No Rebuild Required** - Single Docker image for all environments
@@ -21,6 +23,7 @@ A high-performance **stateless** Speech-to-Text (STT) API built with **FastAPI**
 - **Memory Efficient** - Model loaded once at startup, reused for all requests
 
 ### Sequential Smart-Chunking (Production-Ready)
+
 - **Long Audio Support** - Handle audio up to 30+ minutes without timeout
 - **Flat Memory Usage** - Consistent ~500MB regardless of audio length
 - **High Performance** - Process at 4-5x faster than realtime
@@ -29,6 +32,7 @@ A high-performance **stateless** Speech-to-Text (STT) API built with **FastAPI**
 - **Quality Preserved** - 98% confidence maintained across all chunk sizes
 
 ### Performance Optimizations
+
 - **Direct Library Integration** - C library calls instead of subprocess spawning
 - **Model Preloading** - Whisper model loaded once and reused (90% latency reduction)
 - **In-Memory Caching** - Model validation cached to eliminate redundant I/O
@@ -39,6 +43,7 @@ A high-performance **stateless** Speech-to-Text (STT) API built with **FastAPI**
 - **Multi-threading** - Auto-detect CPU cores (up to 8 threads)
 
 ### Architecture Highlights
+
 - **Stateless Design** - Each request is independent, no session state
 - **Clean Architecture** - Service layer, dependency injection, interface-based design
 - **Docker-Ready** - Minimal Docker setup with health checks
@@ -83,6 +88,7 @@ A high-performance **stateless** Speech-to-Text (STT) API built with **FastAPI**
 ### Core Service
 
 #### **API Service** (`cmd/api/main.py`)
+
 - RESTful API with FastAPI
 - `/transcribe` endpoint for direct transcription
 - Downloads audio from provided URL
@@ -95,30 +101,34 @@ A high-performance **stateless** Speech-to-Text (STT) API built with **FastAPI**
 ## Technology Stack
 
 ### Backend
-| Technology | Version | Purpose |
-|------------|---------|---------|
-| **FastAPI** | 0.104+ | Web framework |
-| **Pydantic** | 2.5+ | Data validation |
-| **httpx** | Latest | Async HTTP client |
-| **Whisper.cpp** | Latest | Speech-to-text engine |
-| **Loguru** | Latest | Structured logging |
+
+| Technology      | Version | Purpose               |
+| --------------- | ------- | --------------------- |
+| **FastAPI**     | 0.104+  | Web framework         |
+| **Pydantic**    | 2.5+    | Data validation       |
+| **httpx**       | Latest  | Async HTTP client     |
+| **Whisper.cpp** | Latest  | Speech-to-text engine |
+| **Loguru**      | Latest  | Structured logging    |
 
 ### Code Organization
-| Module | Purpose |
-|--------|---------|
+
+| Module                | Purpose                                              |
+| --------------------- | ---------------------------------------------------- |
 | **core/constants.py** | Centralized constants (Audio, HTTP, Whisper configs) |
-| **core/errors.py** | Centralized exceptions (STT, Whisper, Audio errors) |
-| **core/messages.py** | Error and log message templates |
+| **core/errors.py**    | Centralized exceptions (STT, Whisper, Audio errors)  |
+| **core/messages.py**  | Error and log message templates                      |
 
 ### Audio Processing
-| Library | Purpose |
-|---------|---------|
+
+| Library    | Purpose                 |
+| ---------- | ----------------------- |
 | **FFmpeg** | Audio format conversion |
 
 ### Infrastructure
-| Service | Purpose |
-|---------|---------|
-| **Docker** | Containerization |
+
+| Service            | Purpose                 |
+| ------------------ | ----------------------- |
+| **Docker**         | Containerization        |
 | **Docker Compose** | Container orchestration |
 
 ---
@@ -126,24 +136,28 @@ A high-performance **stateless** Speech-to-Text (STT) API built with **FastAPI**
 ## Quick Start
 
 ### Prerequisites
+
 - **Python 3.12+**
 - **Docker & Docker Compose** (for containerized deployment)
 - **FFmpeg** (for audio processing)
 - **Whisper.cpp** (compiled binary)
 
 ### 1. Clone Repository
+
 ```bash
 git clone <repository-url>
 cd speech2text
 ```
 
 ### 2. Environment Setup
+
 ```bash
 cp .env.example .env
 # Edit .env with your configuration
 ```
 
 ### 3. Install Dependencies
+
 ```bash
 # Using uv (recommended)
 uv sync
@@ -155,6 +169,7 @@ pip install -e .
 ### 4. Start Service
 
 #### Option A: Docker (Recommended)
+
 ```bash
 # Start service with small model (default)
 docker-compose up -d
@@ -170,6 +185,7 @@ docker-compose down
 ```
 
 #### Option B: Local Development
+
 ```bash
 # Start API
 uv run python cmd/api/main.py
@@ -179,6 +195,7 @@ uv run uvicorn cmd.api.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 ### 5. Test the System
+
 ```bash
 # Transcribe audio from URL
 curl -X POST http://localhost:8000/transcribe \
@@ -199,13 +216,13 @@ The system now supports **dynamic model loading** with direct C library integrat
 
 ### Key Benefits
 
-| Feature | Benefit |
-|---------|---------|
+| Feature               | Benefit                                                                     |
+| --------------------- | --------------------------------------------------------------------------- |
 | **Runtime Switching** | Change models via `WHISPER_MODEL_SIZE=small\|medium` without Docker rebuild |
-| **90% Faster** | Direct C library calls eliminate subprocess overhead (2-3s → 0.1-0.3s) |
-| **Single Image** | One Docker image works for all environments (dev/staging/prod) |
-| **Auto-Download** | Artifacts automatically downloaded from MinIO if missing |
-| **Memory Efficient** | Model loaded once at startup, reused for all requests |
+| **90% Faster**        | Direct C library calls eliminate subprocess overhead (2-3s → 0.1-0.3s)      |
+| **Single Image**      | One Docker image works for all environments (dev/staging/prod)              |
+| **Auto-Download**     | Artifacts automatically downloaded from MinIO if missing                    |
+| **Memory Efficient**  | Model loaded once at startup, reused for all requests                       |
 
 ### Quick Start
 
@@ -241,20 +258,20 @@ WHISPER_MODEL_SIZE=medium docker-compose up
 
 ### Model Specifications
 
-| Model | Size | RAM | Use Case |
-|-------|------|-----|----------|
-| **base** | ~60 MB | ~1 GB | Default balance of speed vs accuracy |
-| **small** | 181 MB | ~500 MB | Development, fast transcription |
-| **medium** | 1.5 GB | ~2 GB | Production, high accuracy |
+| Model      | Size   | RAM     | Use Case                             |
+| ---------- | ------ | ------- | ------------------------------------ |
+| **base**   | ~60 MB | ~1 GB   | Default balance of speed vs accuracy |
+| **small**  | 181 MB | ~500 MB | Development, fast transcription      |
+| **medium** | 1.5 GB | ~2 GB   | Production, high accuracy            |
 
 ### Performance Comparison
 
-| Metric | Before (CLI) | After (Library) | Improvement |
-|--------|-------------|-----------------|-------------|
-| First request | 2-3s | 0.5-1s | **60-75%** |
-| Subsequent requests | 2-3s | 0.1-0.3s | **90%** |
-| Memory (small) | ~200MB/req | ~500MB total | Constant |
-| Model loads | Every request | Once at startup | (Very large improvement) |
+| Metric              | Before (CLI)  | After (Library) | Improvement              |
+| ------------------- | ------------- | --------------- | ------------------------ |
+| First request       | 2-3s          | 0.5-1s          | **60-75%**               |
+| Subsequent requests | 2-3s          | 0.1-0.3s        | **90%**                  |
+| Memory (small)      | ~200MB/req    | ~500MB total    | Constant                 |
+| Model loads         | Every request | Once at startup | (Very large improvement) |
 
 ### Documentation
 
@@ -284,6 +301,7 @@ make clean-old                # Remove old/unused files
 ## API Documentation
 
 ### Interactive Documentation
+
 - **Swagger UI** (Public): http://localhost:8000/swagger/index.html
 - **FastAPI Docs** (Dev): http://localhost:8000/docs
 - **ReDoc** (Dev): http://localhost:8000/redoc
@@ -292,30 +310,34 @@ make clean-old                # Remove old/unused files
 ### Endpoints
 
 #### POST `/transcribe`
+
 Transcribe audio from presigned URL (e.g., MinIO).
 
 **Authentication:** Requires `X-API-Key` header with internal API key.
 
 **Request:**
+
 ```json
 {
   "media_url": "https://minio.internal/bucket/audio_123.mp3?token=xyz...",
-  "language": "vi"  // Optional: language hint (default: "vi")
+  "language": "vi" // Optional: language hint (default: "vi")
 }
 ```
 
 **Response (Success):**
+
 ```json
 {
   "status": "success",
   "transcription": "Nội dung video nói về xe VinFast VF3...",
-  "duration": 45.5,         // Audio duration in seconds
-  "confidence": 0.98,       // AI confidence score
-  "processing_time": 2.1    // Processing time in seconds
+  "duration": 45.5, // Audio duration in seconds
+  "confidence": 0.98, // AI confidence score
+  "processing_time": 2.1 // Processing time in seconds
 }
 ```
 
 **Response (Timeout):**
+
 ```json
 {
   "status": "timeout",
@@ -327,6 +349,7 @@ Transcribe audio from presigned URL (e.g., MinIO).
 ```
 
 **Error Responses:**
+
 - `401` - Missing or invalid API key
 - `413` - File too large
 - `400` - Invalid URL or download failed
@@ -334,6 +357,7 @@ Transcribe audio from presigned URL (e.g., MinIO).
 - `500` - Internal server error
 
 **Example cURL:**
+
 ```bash
 curl -X POST http://localhost:8000/transcribe \
   -H "Content-Type: application/json" \
@@ -344,10 +368,84 @@ curl -X POST http://localhost:8000/transcribe \
   }'
 ```
 
+#### POST `/api/v1/transcribe` (Async)
+
+Submit async transcription job with polling pattern. Ideal for long audio files (> 1 minute).
+
+**Authentication:** Requires `X-API-Key` header.
+
+**Request:**
+
+```json
+{
+  "request_id": "post_123456", // Client-generated ID (e.g., post_id from Crawler)
+  "media_url": "https://minio.internal/bucket/audio.mp3?token=xyz",
+  "language": "vi" // Optional (default: "vi")
+}
+```
+
+**Response (202 Accepted):**
+
+```json
+{
+  "request_id": "post_123456",
+  "status": "PROCESSING",
+  "message": "Job submitted successfully"
+}
+```
+
+**Idempotency:** If job with same `request_id` exists, returns current status without creating new job.
+
+#### GET `/api/v1/transcribe/{request_id}` (Polling)
+
+Poll job status until COMPLETED or FAILED.
+
+**Response (PROCESSING):**
+
+```json
+{
+  "request_id": "post_123456",
+  "status": "PROCESSING",
+  "message": "Transcription in progress"
+}
+```
+
+**Response (COMPLETED):**
+
+```json
+{
+  "request_id": "post_123456",
+  "status": "COMPLETED",
+  "message": "Transcription completed successfully",
+  "transcription": "Nội dung video...",
+  "duration": 45.5,
+  "confidence": 0.98,
+  "processing_time": 12.3
+}
+```
+
+**Response (FAILED):**
+
+```json
+{
+  "request_id": "post_123456",
+  "status": "FAILED",
+  "message": "Transcription failed",
+  "error": "Failed to download audio file"
+}
+```
+
+**Polling Strategy:**
+
+- Poll every 2-5 seconds
+- Jobs expire after 1 hour (configurable via `REDIS_JOB_TTL`)
+
 #### GET `/health`
-Service health check.
+
+Service health check (includes Redis status).
 
 **Response:**
+
 ```json
 {
   "error_code": 0,
@@ -355,15 +453,25 @@ Service health check.
   "data": {
     "status": "healthy",
     "service": "Speech-to-Text API",
-    "version": "1.0.0"
+    "version": "1.0.0",
+    "model": {
+      "initialized": true,
+      "size": "base",
+      "ram_mb": 1000
+    },
+    "redis": {
+      "healthy": true
+    }
   }
 }
 ```
 
 #### GET `/`
+
 Root endpoint with service information.
 
 **Response:**
+
 ```json
 {
   "error_code": 0,
@@ -426,6 +534,13 @@ LOG_FORMAT="console"             # console (colored) or json (for log aggregatio
 LOG_FILE_ENABLED=true            # Enable file logging
 LOG_FILE="logs/stt.log"
 SCRIPT_LOG_LEVEL="INFO"          # Log level for standalone scripts
+
+# Redis (for async job state management)
+REDIS_HOST="localhost"           # Redis host (localhost for dev, redis for docker)
+REDIS_PORT=6379                  # Redis port
+REDIS_PASSWORD=""                # Redis password (empty if no auth)
+REDIS_DB=0                       # Redis database number (0-15)
+REDIS_JOB_TTL=3600               # Job state TTL in seconds (1 hour)
 ```
 
 ### Chunking Configuration
@@ -444,26 +559,27 @@ The system automatically handles long audio files using sequential chunking:
 
 #### Configuration Options
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `WHISPER_CHUNK_ENABLED` | `true` | Enable/disable chunking feature |
-| `WHISPER_CHUNK_DURATION` | `30` | Chunk size in seconds |
-| `WHISPER_CHUNK_OVERLAP` | `1` | Overlap between chunks (prevents word cuts) |
-| `WHISPER_N_THREADS` | `0` | CPU threads (0=auto-detect, max 8) |
-| `TRANSCRIBE_TIMEOUT_SECONDS` | `90` | Base timeout (adaptive for long audio) |
+| Variable                     | Default | Description                                 |
+| ---------------------------- | ------- | ------------------------------------------- |
+| `WHISPER_CHUNK_ENABLED`      | `true`  | Enable/disable chunking feature             |
+| `WHISPER_CHUNK_DURATION`     | `30`    | Chunk size in seconds                       |
+| `WHISPER_CHUNK_OVERLAP`      | `1`     | Overlap between chunks (prevents word cuts) |
+| `WHISPER_N_THREADS`          | `0`     | CPU threads (0=auto-detect, max 8)          |
+| `TRANSCRIBE_TIMEOUT_SECONDS` | `90`    | Base timeout (adaptive for long audio)      |
 
 #### Performance Expectations
 
-| Audio Duration | Processing Time | Memory Usage | Status |
-|----------------|-----------------|--------------|--------|
-| < 30s          | 0.2-0.5x realtime | ~500MB | Direct path |
-| 3-5 minutes    | 0.28x realtime | ~500MB | Chunked |
-| 9-12 minutes   | 0.20x realtime | ~500MB | Chunked |
-| 15-20 minutes  | 0.24x realtime | ~500MB | Chunked |
+| Audio Duration | Processing Time   | Memory Usage | Status      |
+| -------------- | ----------------- | ------------ | ----------- |
+| < 30s          | 0.2-0.5x realtime | ~500MB       | Direct path |
+| 3-5 minutes    | 0.28x realtime    | ~500MB       | Chunked     |
+| 9-12 minutes   | 0.20x realtime    | ~500MB       | Chunked     |
+| 15-20 minutes  | 0.24x realtime    | ~500MB       | Chunked     |
 
 See `CHUNKING_TEST_REPORT.md` for comprehensive test results.
 
 ### Supported Audio Formats
+
 MP3, WAV, M4A, MP4, AAC, OGG, FLAC, WMA, WEBM, MKV, AVI, MOV
 
 ---
@@ -518,6 +634,7 @@ speech2text/
 ## Development Guide
 
 ### Running Tests
+
 ```bash
 # Run all tests
 make test
@@ -537,6 +654,7 @@ uv run pytest --cov=. --cov-report=html
 ```
 
 ### Code Quality
+
 ```bash
 # Format code
 make format
@@ -550,6 +668,7 @@ make clean-old  # Remove old/unused files
 ```
 
 ### Docker Development
+
 ```bash
 # Build image
 make docker-build
@@ -577,6 +696,7 @@ make docker-down
 ### Common Issues
 
 #### 1. Whisper executable not found
+
 ```bash
 # Check whisper path
 ls -la whisper/bin/whisper-cli
@@ -586,6 +706,7 @@ WHISPER_EXECUTABLE="./whisper/bin/whisper-cli"
 ```
 
 #### 2. FFmpeg not installed
+
 ```bash
 # macOS
 brew install ffmpeg
@@ -599,6 +720,7 @@ ffprobe -version  # Required for chunking
 ```
 
 #### 3. Port already in use
+
 ```bash
 # Change port in .env
 API_PORT=8001
@@ -608,12 +730,14 @@ lsof -ti:8000 | xargs kill -9
 ```
 
 #### 4. Audio download fails
+
 - Verify URL is accessible
 - Check firewall/proxy settings
 - Ensure audio format is supported
 - Verify file size is within limits
 
 #### 5. Model artifacts not found (Dynamic Loading)
+
 ```bash
 # Download artifacts manually
 make setup-artifacts-small
@@ -624,6 +748,7 @@ docker-compose up
 ```
 
 #### 6. Library loading error
+
 ```bash
 # Check LD_LIBRARY_PATH is set correctly
 export LD_LIBRARY_PATH=/app/whisper_small_xeon:$LD_LIBRARY_PATH
@@ -637,6 +762,7 @@ make setup-artifacts-small
 ```
 
 #### 7. Transcription timeout (Long Audio)
+
 ```bash
 # Verify chunking is enabled
 docker exec stt-api-dev printenv | grep WHISPER_CHUNK_ENABLED
@@ -655,6 +781,7 @@ docker-compose restart api-dev
 ```
 
 #### 8. High memory usage
+
 ```bash
 # Check if chunking is enabled
 docker exec stt-api-dev printenv | grep WHISPER_CHUNK
@@ -670,6 +797,7 @@ docker-compose logs -f api-dev
 ```
 
 #### 9. Slow transcription performance
+
 ```bash
 # Check thread configuration
 docker exec stt-api-dev printenv | grep WHISPER_N_THREADS
@@ -683,6 +811,7 @@ docker stats smap-api-dev
 ```
 
 #### 10. Chunking not working
+
 ```bash
 # Verify FFmpeg is installed
 docker exec stt-api-dev ffmpeg -version
@@ -698,6 +827,7 @@ docker-compose logs -f api-dev | grep -i chunk
 ```
 
 ### Logs
+
 ```bash
 # View application logs
 tail -f logs/stt.log
@@ -707,6 +837,7 @@ docker-compose logs -f api
 ```
 
 #### 11. Model initialization fails at startup
+
 ```bash
 # Check logs for model initialization errors
 docker-compose logs api | grep -i "model\|whisper\|init"
@@ -728,6 +859,7 @@ docker exec stt-api printenv | grep LD_LIBRARY_PATH
 ```
 
 #### 12. Health check shows unhealthy
+
 ```bash
 # Check health endpoint
 curl http://localhost:8000/health | jq
@@ -748,19 +880,22 @@ docker-compose restart api
 ## Logging Configuration
 
 ### Log Levels
-| Level | Description | Use Case |
-|-------|-------------|----------|
-| `DEBUG` | Detailed diagnostic info | Development, troubleshooting |
-| `INFO` | General operational messages | Production (default) |
-| `WARNING` | Potentially harmful situations | Production |
-| `ERROR` | Error events | Production |
-| `CRITICAL` | Severe errors | Production |
+
+| Level      | Description                    | Use Case                     |
+| ---------- | ------------------------------ | ---------------------------- |
+| `DEBUG`    | Detailed diagnostic info       | Development, troubleshooting |
+| `INFO`     | General operational messages   | Production (default)         |
+| `WARNING`  | Potentially harmful situations | Production                   |
+| `ERROR`    | Error events                   | Production                   |
+| `CRITICAL` | Severe errors                  | Production                   |
 
 ### Log Formats
+
 - **console** (default): Colored, human-readable output for development
 - **json**: Structured JSON output for log aggregation (ELK, Datadog, etc.)
 
 ### Configuration Examples
+
 ```bash
 # Development (verbose)
 LOG_LEVEL=DEBUG
@@ -777,6 +912,7 @@ SCRIPT_LOG_LEVEL=DEBUG
 ```
 
 ### Log Files
+
 - `logs/app.log` - All application logs (DEBUG level)
 - `logs/error.log` - Error logs only (ERROR level)
 - `logs/app.json.log` - JSON format logs (when LOG_FORMAT=json)
@@ -788,6 +924,7 @@ SCRIPT_LOG_LEVEL=DEBUG
 ### Overview
 
 The test suite includes 114 tests covering:
+
 - **Unit Tests**: Configuration, utilities, business logic
 - **Integration Tests**: API endpoints, service layer
 - **Performance Tests**: CPU scaling, benchmarking
@@ -807,11 +944,11 @@ uv run python scripts/run_all_tests.py
 
 ### Test Reports
 
-| Report | Location | Description |
-|--------|----------|-------------|
-| HTML Report | `scripts/test_reports/test_report.html` | Interactive test results |
-| Coverage | `htmlcov/index.html` | Code coverage report |
-| JSON Results | `scripts/test_reports/results.json` | Machine-readable results |
+| Report       | Location                                | Description              |
+| ------------ | --------------------------------------- | ------------------------ |
+| HTML Report  | `scripts/test_reports/test_report.html` | Interactive test results |
+| Coverage     | `htmlcov/index.html`                    | Code coverage report     |
+| JSON Results | `scripts/test_reports/results.json`     | Machine-readable results |
 
 See [TESTING.md](docs/TESTING.md) for comprehensive testing documentation.
 
@@ -838,11 +975,11 @@ docker run --rm -v $(pwd):/app -w /app \
 
 ### Reports
 
-| Report | Location | Description |
-|--------|----------|-------------|
-| CPU Scaling | `scripts/benchmark_results/cpu_scaling_report.md` | CPU scaling analysis |
-| Performance | `docs/PERFORMANCE_REPORT.md` | Comprehensive performance report |
-| Scaling Guide | `docs/SCALING_STRATEGY.md` | When to scale up vs out |
+| Report        | Location                                          | Description                      |
+| ------------- | ------------------------------------------------- | -------------------------------- |
+| CPU Scaling   | `scripts/benchmark_results/cpu_scaling_report.md` | CPU scaling analysis             |
+| Performance   | `docs/PERFORMANCE_REPORT.md`                      | Comprehensive performance report |
+| Scaling Guide | `docs/SCALING_STRATEGY.md`                        | When to scale up vs out          |
 
 ### Key Findings
 
