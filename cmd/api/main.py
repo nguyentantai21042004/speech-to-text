@@ -138,7 +138,6 @@ def create_app() -> FastAPI:
         FastAPI: Configured application instance
     """
     try:
-        logger.info("Creating FastAPI application...")
         settings = get_settings()
 
         # OpenAPI metadata
@@ -180,6 +179,10 @@ MP3, WAV, M4A, MP4, AAC, OGG, FLAC, WMA, WEBM, MKV, AVI, MOV
                 "name": "Health",
                 "description": "Health check endpoints for monitoring API status.",
             },
+            {
+                "name": "Development",
+                "description": "Development-only endpoints (disabled in production).",
+            },
         ]
 
         # Create FastAPI application
@@ -208,7 +211,7 @@ MP3, WAV, M4A, MP4, AAC, OGG, FLAC, WMA, WEBM, MKV, AVI, MOV
             allow_headers=["*"],
         )
 
-        # Mount swagger static files for domain/stt/swagger/index.html access
+        # Mount swagger static files for /swagger/index.html access
         try:
             from pathlib import Path
 
@@ -219,28 +222,14 @@ MP3, WAV, M4A, MP4, AAC, OGG, FLAC, WMA, WEBM, MKV, AVI, MOV
                     StaticFiles(directory=str(swagger_dir), html=True),
                     name="swagger",
                 )
-                logger.info(
-                    f"Swagger static files mounted at /swagger from {swagger_dir}"
-                )
-            else:
-                logger.warning(f"Swagger static directory not found: {swagger_dir}")
         except Exception as e:
             logger.warning(f"Failed to mount swagger static files: {e}")
 
         # Include API routes
-
-        # Transcribe routes (Stateless)
-        app.include_router(transcribe_router)
-        logger.info("Transcribe routes registered")
-
-        # Async transcribe routes (with Redis polling)
-        app.include_router(async_transcribe_router)
-        logger.info("Async transcribe routes registered")
-
-        # Health routes (no prefix - uses root "/" and "/health")
+        app.include_router(transcribe_router)  # /transcribe (sync)
+        app.include_router(async_transcribe_router)  # /api/transcribe (async)
         health_router = create_health_routes(app)
-        app.include_router(health_router)
-        logger.info("Health routes registered")
+        app.include_router(health_router)  # / and /health
 
         # Add exception handlers for unified response format
         @app.exception_handler(RequestValidationError)
@@ -294,7 +283,6 @@ MP3, WAV, M4A, MP4, AAC, OGG, FLAC, WMA, WEBM, MKV, AVI, MOV
                 ),
             )
 
-        logger.info("FastAPI application created successfully")
         return app
 
     except Exception as e:
@@ -305,9 +293,7 @@ MP3, WAV, M4A, MP4, AAC, OGG, FLAC, WMA, WEBM, MKV, AVI, MOV
 
 # Create application instance
 try:
-    logger.info("Initializing Speech-to-Text API...")
     app = create_app()
-    logger.info("Application instance created successfully")
 except Exception as e:
     logger.error(f"Failed to create application instance: {e}")
     logger.exception("Startup error details:")

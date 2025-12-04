@@ -302,75 +302,16 @@ make clean-old                # Remove old/unused files
 
 ### Interactive Documentation
 
-- **Swagger UI** (Public): http://localhost:8000/swagger/index.html
-- **FastAPI Docs** (Dev): http://localhost:8000/docs
-- **ReDoc** (Dev): http://localhost:8000/redoc
+- **Swagger UI**: http://localhost:8000/swagger/index.html
+- **FastAPI Docs**: http://localhost:8000/docs
+- **ReDoc**: http://localhost:8000/redoc
 - **OpenAPI Spec**: http://localhost:8000/openapi.json
 
 ### Endpoints
 
-#### POST `/transcribe`
+#### POST `/transcribe` (Sync)
 
-Transcribe audio from presigned URL (e.g., MinIO).
-
-**Authentication:** Requires `X-API-Key` header with internal API key.
-
-**Request:**
-
-```json
-{
-  "media_url": "https://minio.internal/bucket/audio_123.mp3?token=xyz...",
-  "language": "vi" // Optional: language hint (default: "vi")
-}
-```
-
-**Response (Success):**
-
-```json
-{
-  "status": "success",
-  "transcription": "Nội dung video nói về xe VinFast VF3...",
-  "duration": 45.5, // Audio duration in seconds
-  "confidence": 0.98, // AI confidence score
-  "processing_time": 2.1 // Processing time in seconds
-}
-```
-
-**Response (Timeout):**
-
-```json
-{
-  "status": "timeout",
-  "transcription": "",
-  "duration": 0.0,
-  "confidence": 0.0,
-  "processing_time": 0.0
-}
-```
-
-**Error Responses:**
-
-- `401` - Missing or invalid API key
-- `413` - File too large
-- `400` - Invalid URL or download failed
-- `422` - Validation error (missing/invalid fields)
-- `500` - Internal server error
-
-**Example cURL:**
-
-```bash
-curl -X POST http://localhost:8000/transcribe \
-  -H "Content-Type: application/json" \
-  -H "X-API-Key: your-api-key-here" \
-  -d '{
-    "media_url": "https://minio.internal/bucket/audio_123.mp3?token=xyz",
-    "language": "vi"
-  }'
-```
-
-#### POST `/api/v1/transcribe` (Async)
-
-Submit async transcription job with polling pattern. Ideal for long audio files (> 1 minute).
+Transcribe audio from URL synchronously. Best for short audio (< 1 minute).
 
 **Authentication:** Requires `X-API-Key` header.
 
@@ -378,9 +319,48 @@ Submit async transcription job with polling pattern. Ideal for long audio files 
 
 ```json
 {
-  "request_id": "post_123456", // Client-generated ID (e.g., post_id from Crawler)
+  "media_url": "https://minio.internal/bucket/audio_123.mp3?token=xyz...",
+  "language": "vi"
+}
+```
+
+**Response:**
+
+```json
+{
+  "error_code": 0,
+  "message": "Transcription successful",
+  "data": {
+    "transcription": "Nội dung video nói về xe VinFast VF3...",
+    "duration": 45.5,
+    "confidence": 0.98,
+    "processing_time": 2.1
+  }
+}
+```
+
+**Error Responses:** `400`, `401`, `408` (timeout), `413`, `422`, `500`
+
+**Example:**
+
+```bash
+curl -X POST http://localhost:8000/transcribe \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: your-api-key-here" \
+  -d '{"media_url": "https://example.com/audio.mp3", "language": "vi"}'
+```
+
+#### POST `/api/transcribe` (Async)
+
+Submit async transcription job. Ideal for long audio (> 1 minute).
+
+**Request:**
+
+```json
+{
+  "request_id": "post_123456",
   "media_url": "https://minio.internal/bucket/audio.mp3?token=xyz",
-  "language": "vi" // Optional (default: "vi")
+  "language": "vi"
 }
 ```
 
@@ -388,61 +368,41 @@ Submit async transcription job with polling pattern. Ideal for long audio files 
 
 ```json
 {
-  "request_id": "post_123456",
-  "status": "PROCESSING",
-  "message": "Job submitted successfully"
+  "error_code": 0,
+  "message": "Job submitted successfully",
+  "data": {
+    "request_id": "post_123456",
+    "status": "PROCESSING"
+  }
 }
 ```
 
-**Idempotency:** If job with same `request_id` exists, returns current status without creating new job.
-
-#### GET `/api/v1/transcribe/{request_id}` (Polling)
+#### GET `/api/transcribe/{request_id}` (Polling)
 
 Poll job status until COMPLETED or FAILED.
-
-**Response (PROCESSING):**
-
-```json
-{
-  "request_id": "post_123456",
-  "status": "PROCESSING",
-  "message": "Transcription in progress"
-}
-```
 
 **Response (COMPLETED):**
 
 ```json
 {
-  "request_id": "post_123456",
-  "status": "COMPLETED",
-  "message": "Transcription completed successfully",
-  "transcription": "Nội dung video...",
-  "duration": 45.5,
-  "confidence": 0.98,
-  "processing_time": 12.3
+  "error_code": 0,
+  "message": "Transcription completed",
+  "data": {
+    "request_id": "post_123456",
+    "status": "COMPLETED",
+    "transcription": "Nội dung video...",
+    "duration": 45.5,
+    "confidence": 0.98,
+    "processing_time": 12.3
+  }
 }
 ```
 
-**Response (FAILED):**
-
-```json
-{
-  "request_id": "post_123456",
-  "status": "FAILED",
-  "message": "Transcription failed",
-  "error": "Failed to download audio file"
-}
-```
-
-**Polling Strategy:**
-
-- Poll every 2-5 seconds
-- Jobs expire after 1 hour (configurable via `REDIS_JOB_TTL`)
+**Polling Strategy:** Poll every 2-5 seconds. Jobs expire after 1 hour (`REDIS_JOB_TTL`).
 
 #### GET `/health`
 
-Service health check (includes Redis status).
+Service health check.
 
 **Response:**
 
@@ -454,35 +414,15 @@ Service health check (includes Redis status).
     "status": "healthy",
     "service": "Speech-to-Text API",
     "version": "1.0.0",
-    "model": {
-      "initialized": true,
-      "size": "base",
-      "ram_mb": 1000
-    },
-    "redis": {
-      "healthy": true
-    }
+    "model": { "initialized": true, "size": "base", "ram_mb": 1000 },
+    "redis": { "healthy": true }
   }
 }
 ```
 
 #### GET `/`
 
-Root endpoint with service information.
-
-**Response:**
-
-```json
-{
-  "error_code": 0,
-  "message": "API service is running",
-  "data": {
-    "service": "SMAP Speech-to-Text",
-    "version": "1.0.0",
-    "status": "running"
-  }
-}
-```
+Root endpoint with service info.
 
 ---
 

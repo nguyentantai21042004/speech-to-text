@@ -34,7 +34,7 @@ from services.async_transcription import (
     AsyncTranscriptionService,
 )
 
-router = APIRouter(prefix="/api/v1", tags=["Async Transcription"])
+router = APIRouter(prefix="/api", tags=["Async Transcription"])
 
 
 # ============================================================================

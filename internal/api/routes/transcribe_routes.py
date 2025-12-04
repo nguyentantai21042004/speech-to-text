@@ -170,7 +170,7 @@ async def transcribe(
 @router.post(
     "/transcribe/local",
     response_model=StandardResponse,
-    tags=["Transcription", "Development"],
+    tags=["Development"],
     summary="[DEV ONLY] Transcribe from local file",
 )
 async def transcribe_local(

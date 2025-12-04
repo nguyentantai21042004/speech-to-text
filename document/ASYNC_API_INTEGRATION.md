@@ -23,7 +23,7 @@ Hướng dẫn tích hợp Async Speech-to-Text API với polling pattern cho c�
 ### 1. Submit Job
 
 ```
-POST /api/v1/transcribe
+POST /api/transcribe
 ```
 
 **Headers:**
@@ -66,7 +66,7 @@ X-API-Key: <your-api-key>
 ### 2. Poll Status
 
 ```
-GET /api/v1/transcribe/{request_id}
+GET /api/transcribe/{request_id}
 ```
 
 **Headers:**
@@ -160,7 +160,7 @@ def get_stt_result(audio_url: str, post_id: str, api_key: str) -> Optional[str]:
     # 1. Submit job
     try:
         resp = requests.post(
-            f"{stt_host}/api/v1/transcribe",
+            f"{stt_host}/api/transcribe",
             json={
                 "request_id": post_id,
                 "media_url": audio_url,
@@ -185,7 +185,7 @@ def get_stt_result(audio_url: str, post_id: str, api_key: str) -> Optional[str]:
     for attempt in range(max_retries):
         try:
             status_resp = requests.get(
-                f"{stt_host}/api/v1/transcribe/{post_id}",
+                f"{stt_host}/api/transcribe/{post_id}",
                 headers=headers,
                 timeout=10
             )
@@ -260,7 +260,7 @@ async def get_stt_result_async(
         # 1. Submit
         try:
             resp = await client.post(
-                f"{stt_host}/api/v1/transcribe",
+                f"{stt_host}/api/transcribe",
                 json={
                     "request_id": post_id,
                     "media_url": audio_url,
@@ -280,7 +280,7 @@ async def get_stt_result_async(
         while elapsed < max_wait_seconds:
             try:
                 status_resp = await client.get(
-                    f"{stt_host}/api/v1/transcribe/{post_id}",
+                    f"{stt_host}/api/transcribe/{post_id}",
                     headers=headers
                 )
                 
@@ -322,7 +322,7 @@ asyncio.run(main())
 
 ```bash
 # 1. Submit job
-curl -X POST http://localhost:8000/api/v1/transcribe \
+curl -X POST http://localhost:8000/api/transcribe \
   -H "Content-Type: application/json" \
   -H "X-API-Key: your-api-key" \
   -d '{
@@ -332,7 +332,7 @@ curl -X POST http://localhost:8000/api/v1/transcribe \
   }'
 
 # 2. Poll status (repeat until COMPLETED/FAILED)
-curl -X GET http://localhost:8000/api/v1/transcribe/test-123 \
+curl -X GET http://localhost:8000/api/transcribe/test-123 \
   -H "X-API-Key: your-api-key"
 ```
 

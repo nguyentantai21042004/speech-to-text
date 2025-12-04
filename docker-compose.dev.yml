@@ -8,13 +8,13 @@ services:
     build:
       context: .
       dockerfile: cmd/api/Dockerfile.dev
-    platform: linux/amd64  # Force x86_64 for Whisper .so libraries
+    platform: linux/amd64 # Force x86_64 for Whisper .so libraries
     container_name: stt-api-dev
     restart: unless-stopped
     ports:
       - "8000:8000"
     working_dir: /app
-    
+
     # Mount source code for hot-reload (not entire project)
     volumes:
       - ./cmd:/app/cmd
@@ -29,7 +29,7 @@ services:
       - whisper_library_base:/app/models/whisper_base_xeon
       - whisper_library_small:/app/models/whisper_small_xeon
       - whisper_library_medium:/app/models/whisper_medium_xeon
-    
+
     environment:
       # Application
       APP_NAME: "Speech-to-Text API"
@@ -49,7 +49,7 @@ services:
       WHISPER_MODEL_SIZE: "${WHISPER_MODEL_SIZE:-base}"
       WHISPER_ARTIFACTS_DIR: "models"
       LD_LIBRARY_PATH: "/app/models/whisper_base_xeon:/app/models/whisper_small_xeon:/app/models/whisper_medium_xeon"
-      
+
       # MinIO Configuration
       MINIO_ENDPOINT: "${MINIO_ENDPOINT:-http://172.16.19.115:9000}"
       MINIO_ACCESS_KEY: "${MINIO_ACCESS_KEY:-smap}"
@@ -79,23 +79,29 @@ services:
       # API Security
       INTERNAL_API_KEY: "${INTERNAL_API_KEY:-your-api-key-here}"
       TRANSCRIBE_TIMEOUT_SECONDS: "90"
-    
+
+      # Redis (for async job state)
+      REDIS_HOST: "host.docker.internal"
+      REDIS_PORT: "6379"
+      REDIS_PASSWORD: "${REDIS_PASSWORD:-21042004}"
+      REDIS_DB: "0"
+
     networks:
       - stt-network
-    
+
     deploy:
       resources:
         limits:
           memory: 4G
         reservations:
           memory: 2G
-    
+
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 30s  # Faster startup now
+      start_period: 30s # Faster startup now
 
 networks:
   stt-network:
