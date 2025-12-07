@@ -75,6 +75,7 @@ analytics_engine/
 **Purpose**: Entry points for services. Each service has its own directory.
 
 **Responsibilities**:
+
 - Load application configuration from `core.config`
 - Initialize logging from `core.logger`
 - Bootstrap dependency injection container (if applicable)
@@ -82,6 +83,7 @@ analytics_engine/
 - Handle process lifecycle (startup, shutdown)
 
 **Pattern**:
+
 ```python
 # cmd/analytics_api/main.py
 from core.config import settings
@@ -101,6 +103,7 @@ if __name__ == "__main__":
 ```
 
 **Key Points**:
+
 - One entry point per service (API, Consumer, Worker, etc.)
 - Minimal logic - just wiring and initialization
 - Uses `internal/` for actual implementation
@@ -110,12 +113,14 @@ if __name__ == "__main__":
 **Purpose**: Internal implementation of services. Registers routes, consumers, and handlers.
 
 **Responsibilities**:
+
 - Register API routes (FastAPI routers)
 - Register message queue consumers
 - Define middleware and exception handlers
 - Implement service-specific logic
 
 **Pattern**:
+
 ```python
 # internal/api/main.py
 from fastapi import FastAPI
@@ -131,6 +136,7 @@ async def health():
 ```
 
 **Key Points**:
+
 - Contains the actual service implementation
 - Separated by service type (api, consumers, workers)
 - Does NOT handle initialization - that's `cmd/`'s job
@@ -142,6 +148,7 @@ async def health():
 **Components**:
 
 #### `config.py` - Application Settings
+
 ```python
 from pydantic_settings import BaseSettings
 
@@ -157,6 +164,7 @@ def get_settings() -> Settings:
 ```
 
 #### `logger.py` - Logging Configuration
+
 ```python
 from loguru import logger
 
@@ -168,6 +176,7 @@ setup_logger()
 ```
 
 **Key Points**:
+
 - Shared across all services
 - No service-specific logic
 - Provides common utilities and configurations
@@ -180,6 +189,7 @@ setup_logger()
 **Components**:
 
 #### `database.py` - SQLAlchemy Models
+
 ```python
 from sqlalchemy import Column, String
 from sqlalchemy.ext.declarative import declarative_base
@@ -193,6 +203,7 @@ class PostAnalytics(Base):
 ```
 
 #### `schemas.py` - Pydantic Schemas (Future)
+
 ```python
 from pydantic import BaseModel
 
@@ -203,6 +214,7 @@ class PostAnalyticsCreate(BaseModel):
 ```
 
 **Key Points**:
+
 - Centralized location for all data models
 - Separate database models from API schemas
 - Easy to import: `from models.database import PostAnalytics`
@@ -212,11 +224,13 @@ class PostAnalyticsCreate(BaseModel):
 **Purpose**: Abstract base classes for dependency injection.
 
 **Responsibilities**:
+
 - Define contracts for repositories
 - Define contracts for external services (storage, queue, cache)
 - Enable dependency injection and testing
 
 **Pattern**:
+
 ```python
 # interfaces/repository.py
 from abc import ABC, abstractmethod
@@ -225,13 +239,14 @@ class IAnalyticsRepository(ABC):
     @abstractmethod
     async def create(self, analytics: PostAnalytics) -> PostAnalytics:
         pass
-    
+
     @abstractmethod
     async def get_by_id(self, analytics_id: str) -> Optional[PostAnalytics]:
         pass
 ```
 
 **Key Points**:
+
 - All interfaces use ABC (Abstract Base Class)
 - Enables easy mocking for tests
 - Decouples business logic from infrastructure
@@ -241,11 +256,13 @@ class IAnalyticsRepository(ABC):
 **Purpose**: Implement data access patterns.
 
 **Responsibilities**:
+
 - Implement `IAnalyticsRepository` interface
 - Handle database operations
 - Use SQLAlchemy for queries
 
 **Pattern** (Future):
+
 ```python
 # repositories/analytics_repository.py
 from interfaces.repository import IAnalyticsRepository
@@ -254,7 +271,7 @@ from models.database import PostAnalytics
 class AnalyticsRepository(IAnalyticsRepository):
     def __init__(self, db_session):
         self.db = db_session
-    
+
     async def create(self, analytics: PostAnalytics) -> PostAnalytics:
         self.db.add(analytics)
         await self.db.commit()
@@ -262,6 +279,7 @@ class AnalyticsRepository(IAnalyticsRepository):
 ```
 
 **Key Points**:
+
 - Implements interfaces from `interfaces/`
 - Handles all database operations
 - Can be easily swapped for testing
@@ -271,18 +289,20 @@ class AnalyticsRepository(IAnalyticsRepository):
 **Purpose**: Business logic and domain services.
 
 **Responsibilities**:
+
 - Implement business logic
 - Orchestrate operations
 - Use dependency injection for infrastructure
 
 **Pattern** (Future):
+
 ```python
 # services/analytics_service.py
 class AnalyticsService:
     def __init__(self, storage, database):
         self.storage = storage
         self.database = database
-    
+
     def process_post(self, post_id):
         # Business logic here
         pass
@@ -293,6 +313,7 @@ class AnalyticsService:
 **Role**: Central coordinator for the full analytics pipeline.
 
 **Pipeline**:
+
 - Input: A single Atomic JSON post (`meta`, `content`, `interaction`, `author`, `comments`).
 - Steps:
   1. **Preprocessing** (`TextPreprocessor`):
@@ -313,6 +334,7 @@ class AnalyticsService:
      - Save final `PostAnalytics` payload (overall, aspects, keywords, impact, raw metrics).
 
 **Entry Points**:
+
 - **Queue Consumer** (`internal/consumers/main.py`):
   - Reads messages from RabbitMQ.
   - If message contains `data_ref`:
@@ -327,6 +349,7 @@ class AnalyticsService:
   - Delegates to `AnalyticsOrchestrator.process_post(post_data)` and returns the final analytics payload for debugging.
 
 **End-to-End Flow**:
+
 ```text
 MinIO (Atomic JSON) ──▶ internal/consumers/main.py
     │                         │
@@ -344,6 +367,7 @@ MinIO (Atomic JSON) ──▶ internal/consumers/main.py
 **Purpose**: Database schema versioning with Alembic.
 
 **Configuration**:
+
 ```python
 # migrations/env.py
 from core.models import Base
@@ -368,22 +392,26 @@ services/ (business logic)
 ## Key Principles
 
 ### 1. Separation of Concerns
+
 - **cmd/**: Process management and initialization
 - **internal/**: Service implementation
 - **core/**: Shared utilities
 - **services/**: Business logic
 
 ### 2. Dependency Injection
+
 - Configuration loaded once in `cmd/`
 - Passed down to `internal/` and `services/`
 - No global state in business logic
 
 ### 3. Testability
+
 - `internal/` and `services/` can be tested independently
 - Mock `core/` components for unit tests
 - Integration tests use `cmd/` entry points
 
 ### 4. Scalability
+
 - Easy to add new services (new `cmd/` entry point)
 - Easy to add new routes (register in `internal/api/`)
 - Easy to add new consumers (register in `internal/consumers/`)
@@ -391,6 +419,7 @@ services/ (business logic)
 ## Configuration Management
 
 ### Environment Variables
+
 Managed via `.env` file and `core/config.py`:
 
 ```bash
@@ -407,13 +436,14 @@ DEBUG=false
 ```
 
 ### Settings Class
+
 ```python
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
         extra="ignore",  # Ignore extra fields
     )
-    
+
     database_url: str
     api_host: str = "0.0.0.0"
     # ...
@@ -422,17 +452,20 @@ class Settings(BaseSettings):
 ## Development Workflow
 
 ### 1. Start Development Environment
+
 ```bash
 make dev-up  # Starts Docker services
 ```
 
 ### 2. Run Services
+
 ```bash
 make run-analytics-api       # Start API
 make run-analytics-consumer  # Start consumer
 ```
 
 ### 3. Database Migrations
+
 ```bash
 make db-migrate  # Create migration
 make db-upgrade  # Apply migrations
@@ -441,6 +474,7 @@ make db-upgrade  # Apply migrations
 ## Adding a New Service
 
 ### Step 1: Create Entry Point
+
 ```bash
 mkdir -p cmd/new_service
 touch cmd/new_service/__init__.py
@@ -448,6 +482,7 @@ touch cmd/new_service/main.py
 ```
 
 ### Step 2: Create Internal Implementation
+
 ```bash
 mkdir -p internal/new_service
 touch internal/new_service/__init__.py
@@ -455,6 +490,7 @@ touch internal/new_service/main.py
 ```
 
 ### Step 3: Implement Entry Point
+
 ```python
 # cmd/new_service/main.py
 from core.config import settings
@@ -467,6 +503,7 @@ if __name__ == "__main__":
 ```
 
 ### Step 4: Implement Service Logic
+
 ```python
 # internal/new_service/main.py
 def run_service():
@@ -475,6 +512,7 @@ def run_service():
 ```
 
 ### Step 5: Add Makefile Command
+
 ```makefile
 run-new-service:
 	PYTHONPATH=. uv run cmd/new_service/main.py
@@ -496,6 +534,7 @@ run-new-service:
 ## Best Practices
 
 ### 1. Import Organization
+
 ```python
 # Standard library
 import os
@@ -517,17 +556,20 @@ from services.analytics_service import AnalyticsService
 ```
 
 ### 2. Error Handling
+
 - Use custom exceptions from `core/errors.py`
 - Log errors with context using `core/logger.py`
 - Return consistent error responses
 
 ### 3. Configuration
+
 - All configuration in `core/config.py`
 - Use environment variables
 - Provide sensible defaults
 - Validate settings on startup
 
 ### 4. Logging
+
 - Use structured logging
 - Include context (service, function, line)
 - Different log levels for different environments
@@ -538,26 +580,32 @@ from services.analytics_service import AnalyticsService
 To replicate this structure in a new repository:
 
 1. **Copy Structure**:
+
    ```bash
    mkdir -p cmd/service_name internal/service_name core services migrations
    ```
 
 2. **Copy Core Files**:
+
    - `core/config.py` (adapt settings)
    - `core/logger.py` (reuse as-is)
    - `core/models.py` (define your models)
 
 3. **Create Entry Point**:
+
    - `cmd/service_name/main.py` (follow pattern above)
 
 4. **Create Internal Implementation**:
+
    - `internal/service_name/main.py` (implement your service)
 
 5. **Setup Dependencies**:
+
    - Copy `pyproject.toml` structure
    - Run `uv sync`
 
 6. **Setup Database**:
+
    - Copy `migrations/env.py` pattern
    - Run `alembic init migrations`
 

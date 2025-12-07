@@ -5,6 +5,7 @@ Hướng dẫn benchmark hiệu năng Whisper để tính Normalization Ratio gi
 ## Tổng quan
 
 Quy trình benchmark gồm 4 bước:
+
 1. **Benchmark trên Mac M4** - Đo hiệu năng với CPU isolation
 2. **Benchmark trên K8s Xeon** - Đo hiệu năng trên cluster production
 3. **Tính Normalization Ratio** - So sánh M4 vs Xeon
@@ -148,10 +149,10 @@ Dựa trên kết quả benchmark, cập nhật `k8s/deployment.yaml`:
 ```yaml
 resources:
   requests:
-    cpu: "2.5"      # Từ sizing recommendation
+    cpu: "2.5" # Từ sizing recommendation
     memory: "1Gi"
   limits:
-    cpu: "3"        # +0.5 cho burst
+    cpu: "3" # +0.5 cho burst
     memory: "1.5Gi"
 ```
 
@@ -163,8 +164,9 @@ resources:
 
 **Nguyên nhân**: Không chạy trong Docker với CPU isolation
 
-**Giải pháp**: 
-- Luôn dùng `docker run --cpus="1"` 
+**Giải pháp**:
+
+- Luôn dùng `docker run --cpus="1"`
 - Kiểm tra `is_docker: true` trong kết quả
 
 ### CPU Throttling
@@ -174,6 +176,7 @@ resources:
 **Nguyên nhân**: Nhiều threads tranh chấp 1 CPU core
 
 **Giải pháp**:
+
 - Giữ `WHISPER_N_THREADS=1` nếu CPU limit = 1
 - Hoặc tăng CPU limit tương ứng với số threads
 
@@ -183,7 +186,8 @@ resources:
 
 **Nguyên nhân**: Model chưa được cache
 
-**Giải pháp**: 
+**Giải pháp**:
+
 - Script đã có warmup inference
 - Đảm bảo model artifacts đã được download trước
 

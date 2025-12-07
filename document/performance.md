@@ -2,11 +2,11 @@
 
 ## Executive Summary
 
-| Metric | Status | Details |
-|--------|--------|---------|
-| System Tests | ✅ 114/114 passed | All tests passing |
-| CPU Characteristics | ✅ Analyzed | Poor multi-core scaling - "ít cores mạnh" |
-| Scaling Strategy | ✅ Documented | See [SCALING_STRATEGY.md](./SCALING_STRATEGY.md) |
+| Metric              | Status            | Details                                          |
+| ------------------- | ----------------- | ------------------------------------------------ |
+| System Tests        | ✅ 114/114 passed | All tests passing                                |
+| CPU Characteristics | ✅ Analyzed       | Poor multi-core scaling - "ít cores mạnh"        |
+| Scaling Strategy    | ✅ Documented     | See [SCALING_STRATEGY.md](./SCALING_STRATEGY.md) |
 
 ## 1. System Testing Results
 
@@ -30,24 +30,24 @@ Execution Time: ~4s
 
 ### Test Categories
 
-| Category | Tests | Description |
-|----------|-------|-------------|
-| API Tests | 15 | Endpoint validation, auth, error handling |
-| Service Tests | 7 | TranscribeService business logic |
-| Config Tests | 11 | Chunking configuration & validation |
-| Whisper Tests | 14 | Library adapter, model configs |
-| Logging Tests | 18 | Logger configuration & exports |
-| Audio Tests | 49 | Validation, merge quality, thread safety |
+| Category      | Tests | Description                               |
+| ------------- | ----- | ----------------------------------------- |
+| API Tests     | 15    | Endpoint validation, auth, error handling |
+| Service Tests | 7     | TranscribeService business logic          |
+| Config Tests  | 11    | Chunking configuration & validation       |
+| Whisper Tests | 14    | Library adapter, model configs            |
+| Logging Tests | 18    | Logger configuration & exports            |
+| Audio Tests   | 49    | Validation, merge quality, thread safety  |
 
 ## 2. CPU Characteristics
 
 ### Profiling Results
 
-| Cores | Latency (ms) | RPS | Speedup | Efficiency |
-|-------|--------------|-----|---------|------------|
-| 1 | 10095.84 | 0.0991 | 1.00x | 100% |
-| 2 | 10487.42 | 0.0954 | 0.96x | 48% |
-| 4 | 11666.77 | 0.0857 | 0.87x | 22% |
+| Cores | Latency (ms) | RPS    | Speedup | Efficiency |
+| ----- | ------------ | ------ | ------- | ---------- |
+| 1     | 10095.84     | 0.0991 | 1.00x   | 100%       |
+| 2     | 10487.42     | 0.0954 | 0.96x   | 48%        |
+| 4     | 11666.77     | 0.0857 | 0.87x   | 22%        |
 
 ### Analysis
 
@@ -60,6 +60,7 @@ Execution Time: ~4s
 **Answer: Ít cores mạnh** (Fewer but stronger cores)
 
 The Whisper service does NOT scale well with multiple cores in this environment. Adding more cores actually increases latency due to:
+
 1. Thread contention
 2. Memory bandwidth limitations
 3. Emulation overhead (Docker on ARM)
@@ -77,11 +78,13 @@ The Whisper service does NOT scale well with multiple cores in this environment.
 ### When to Scale Vertically (Scale Up)
 
 Use vertical scaling when:
+
 - Single request latency exceeds SLA
 - CPU utilization is low (<50%)
 - Memory is the bottleneck
 
 Actions:
+
 - Increase memory (for larger models)
 - Use faster CPU (higher clock speed)
 - Do NOT add more cores (poor scaling)
@@ -89,34 +92,36 @@ Actions:
 ### When to Scale Horizontally (Scale Out)
 
 Use horizontal scaling when:
+
 - System throughput is insufficient
 - CPU utilization is high (>70%)
 - Request queue is building up
 
 Actions:
+
 - Add more pods via HPA
 - Keep 1-2 cores per pod
 - Ensure load balancing is working
 
 ### Decision Matrix
 
-| Symptom | CPU Util | Action |
-|---------|----------|--------|
-| High latency | Low | Increase CPU clock speed |
-| High latency | High | Add more pods |
-| Low throughput | Low | Check bottlenecks |
-| Low throughput | High | Add more pods |
+| Symptom        | CPU Util | Action                   |
+| -------------- | -------- | ------------------------ |
+| High latency   | Low      | Increase CPU clock speed |
+| High latency   | High     | Add more pods            |
+| Low throughput | Low      | Check bottlenecks        |
+| Low throughput | High     | Add more pods            |
 
 ## 4. Benchmark Scripts
 
 ### Available Scripts
 
-| Script | Purpose | Usage |
-|--------|---------|-------|
-| `run_all_tests.py` | Run test suite | `python scripts/run_all_tests.py` |
+| Script                   | Purpose              | Usage                                   |
+| ------------------------ | -------------------- | --------------------------------------- |
+| `run_all_tests.py`       | Run test suite       | `python scripts/run_all_tests.py`       |
 | `profile_cpu_scaling.py` | CPU scaling analysis | `python scripts/profile_cpu_scaling.py` |
-| `benchmark.py` | Single benchmark | `python scripts/benchmark.py` |
-| `benchmark_all_audio.sh` | All audio files | `./scripts/benchmark_all_audio.sh` |
+| `benchmark.py`           | Single benchmark     | `python scripts/benchmark.py`           |
+| `benchmark_all_audio.sh` | All audio files      | `./scripts/benchmark_all_audio.sh`      |
 
 ### Running Benchmarks
 
@@ -136,10 +141,10 @@ docker run --rm -v $(pwd):/app -w /app \
 # Recommended K8s resources
 resources:
   requests:
-    cpu: "1000m"      # 1 core (optimal for this workload)
+    cpu: "1000m" # 1 core (optimal for this workload)
     memory: "1Gi"
   limits:
-    cpu: "2000m"      # Allow burst to 2 cores
+    cpu: "2000m" # Allow burst to 2 cores
     memory: "2Gi"
 ```
 

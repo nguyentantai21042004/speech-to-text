@@ -7,6 +7,7 @@ Comprehensive testing documentation for the Speech-to-Text system.
 ## Overview
 
 The test suite covers:
+
 - **Unit Tests**: Core business logic, configuration, utilities
 - **Integration Tests**: API endpoints, service layer
 - **Performance Tests**: CPU scaling, benchmarking
@@ -76,6 +77,7 @@ def test_merge_empty_list()
 ```
 
 **Key Points**:
+
 - Tests configuration validation without mocking
 - Tests pure calculation logic
 - No external dependencies required
@@ -103,6 +105,7 @@ def test_service_accepts_custom_downloader()
 ```
 
 **Key Points**:
+
 - Uses mock implementations of `ITranscriber` and `IAudioDownloader`
 - Tests business logic without real Whisper library
 - Validates timeout handling and cleanup
@@ -133,6 +136,7 @@ def test_internal_server_error()
 ```
 
 **Key Points**:
+
 - Uses FastAPI TestClient
 - Mocks service layer for isolation
 - Tests HTTP status codes and response formats
@@ -167,6 +171,7 @@ def test_model_init_error_is_whisper_error()
 ```
 
 **Key Points**:
+
 - Tests configuration constants
 - Mocks ctypes.CDLL for library loading
 - Tests error handling and validation
@@ -280,12 +285,12 @@ No slow tests detected
 
 ### Reports Location
 
-| Report | Path |
-|--------|------|
-| HTML Report | `scripts/test_reports/test_report.html` |
-| JSON Results | `scripts/test_reports/results.json` |
-| Summary | `scripts/test_reports/summary.json` |
-| Coverage HTML | `htmlcov/index.html` |
+| Report        | Path                                    |
+| ------------- | --------------------------------------- |
+| HTML Report   | `scripts/test_reports/test_report.html` |
+| JSON Results  | `scripts/test_reports/results.json`     |
+| Summary       | `scripts/test_reports/summary.json`     |
+| Coverage HTML | `htmlcov/index.html`                    |
 
 ---
 
@@ -304,13 +309,13 @@ No slow tests detected
 ```python
 class MockTranscriber(ITranscriber):
     """Mock transcriber for testing"""
-    
+
     def __init__(self, transcription_text: str = "Test"):
         self.transcription_text = transcription_text
-    
+
     def transcribe(self, audio_path: str, language: str = "vi") -> str:
         return self.transcription_text
-    
+
     def get_audio_duration(self, audio_path: str) -> float:
         return 30.0
 
@@ -319,14 +324,14 @@ class MockTranscriber(ITranscriber):
 async def test_transcribe_success(tmp_path):
     mock_transcriber = MockTranscriber(transcription_text="Hello world")
     mock_downloader = MockAudioDownloader(file_size_mb=2.5)
-    
+
     service = TranscribeService(
         transcriber=mock_transcriber,
         audio_downloader=mock_downloader
     )
-    
+
     result = await service.transcribe_from_url("https://example.com/audio.mp3")
-    
+
     assert result["text"] == "Hello world"
     assert result["file_size_mb"] == 2.5
 ```
@@ -337,12 +342,12 @@ async def test_transcribe_success(tmp_path):
 def test_chunk_overlap_validation_invalid():
     """Test that invalid overlap raises ValueError"""
     settings = get_settings()
-    
+
     # Save and restore original values
     original_overlap = settings.whisper_chunk_overlap
     try:
         settings.whisper_chunk_overlap = 20  # Invalid: >= duration/2
-        
+
         with pytest.raises(ValueError, match="must be less than half"):
             settings.validate_chunk_overlap()
     finally:
@@ -383,20 +388,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
-      
+          python-version: "3.12"
+
       - name: Install dependencies
         run: |
           pip install uv
           uv sync
-      
+
       - name: Run tests
         run: uv run pytest tests/ -v --cov=. --cov-report=xml
-      
+
       - name: Upload coverage
         uses: codecov/codecov-action@v4
         with:
@@ -410,6 +415,7 @@ jobs:
 ### Common Issues
 
 #### 1. Import errors
+
 ```bash
 # Ensure package is installed
 uv sync
@@ -418,6 +424,7 @@ pip install -e .
 ```
 
 #### 2. Async test failures
+
 ```bash
 # Install pytest-asyncio
 uv add pytest-asyncio
@@ -429,6 +436,7 @@ async def test_async_function():
 ```
 
 #### 3. Mock not working
+
 ```python
 # Wrong: Mocking the class
 with patch("module.ClassName"):
@@ -440,6 +448,7 @@ with patch("services.transcription.TranscribeService.transcribe_from_url"):
 ```
 
 #### 4. Settings cache issues
+
 ```python
 # Clear settings cache between tests
 from core.config import get_settings
@@ -451,6 +460,7 @@ get_settings.cache_clear()
 ## Performance Testing
 
 See [PERFORMANCE_REPORT.md](PERFORMANCE_REPORT.md) and [SCALING_STRATEGY.md](SCALING_STRATEGY.md) for:
+
 - CPU scaling analysis
 - Benchmark results
 - Scaling recommendations
