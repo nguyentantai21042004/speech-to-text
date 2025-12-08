@@ -3,13 +3,11 @@ kind: PersistentVolumeClaim
 metadata:
   name: smap-stt-models-pvc
   namespace: smap
-  labels:
-    app: smap-speech-to-text
 spec:
   accessModes:
-    - ReadWriteMany  # Shared across multiple pods
+    - ReadWriteOnce
   resources:
     requests:
-      storage: 2Gi  # 181MB for small model + buffer, 1.5GB for medium
-  storageClassName: longhorn  # Adjust based on your cluster
-
+      storage: 3Gi
+  storageClassName: local-path
+  volumeMode: Filesystem

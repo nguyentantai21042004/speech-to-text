@@ -34,7 +34,7 @@ class Settings(BaseSettings):
     max_upload_size_mb: int = Field(default=500, alias="MAX_UPLOAD_SIZE_MB")
 
     # Storage (temporary processing)
-    temp_dir: str = Field(default="/tmp/stt_processing", alias="TEMP;_DIR")
+    temp_dir: str = Field(default="/tmp/stt_processing", alias="TEMP_DIR")
 
     # Whisper Library Settings (for direct C library integration)
     whisper_model_size: str = Field(default="base", alias="WHISPER_MODEL_SIZE")
@@ -81,7 +81,6 @@ class Settings(BaseSettings):
 
     # Logging
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
-    log_file: str = Field(default="logs/stt.log", alias="LOG_FILE")
     # Log format: "console" (colored, human-readable) or "json" (for log aggregation)
     log_format: str = Field(default="console", alias="LOG_FORMAT")
     # Enable/disable file logging (logs/app.log and logs/error.log)

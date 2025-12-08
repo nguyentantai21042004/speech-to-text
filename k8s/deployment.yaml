@@ -7,12 +7,12 @@ metadata:
     app: smap-speech-to-text
     version: v1
 spec:
-  replicas: 1  # Reduced to 1 pod
+  replicas: 1
   strategy:
     type: RollingUpdate
     rollingUpdate:
       maxSurge: 1
-      maxUnavailable: 0  # Zero-downtime deployment
+      maxUnavailable: 0
   selector:
     matchLabels:
       app: smap-speech-to-text
@@ -22,7 +22,6 @@ spec:
         app: smap-speech-to-text
         version: v1
     spec:
-      # Security Context
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000
@@ -34,149 +33,93 @@ spec:
         - name: harbor-secret
 
       containers:
-      - name: smap-speech-to-text
-        image: registry.tantai.dev/smap/smap-speech-to-text:251204-012144
-        imagePullPolicy: Always
+        - name: smap-speech-to-text
+          image: registry.tantai.dev/smap/smap-speech-to-text:251209-055914
+          imagePullPolicy: Always
 
-        ports:
-        - name: http
-          containerPort: 8000
-          protocol: TCP
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
 
-        # Environment Variables from ConfigMap
-        envFrom:
-        - configMapRef:
-            name: smap-stt-config
+          envFrom:
+            - configMapRef:
+                name: smap-stt-config
+            - secretRef:
+                name: smap-stt-secrets
 
-        # Sensitive Environment Variables from Secret
-        env:
-        - name: INTERNAL_API_KEY
-          valueFrom:
-            secretKeyRef:
-              name: smap-stt-secrets
-              key: INTERNAL_API_KEY
-        - name: MINIO_ACCESS_KEY
-          valueFrom:
-            secretKeyRef:
-              name: smap-stt-secrets
-              key: MINIO_ACCESS_KEY
-        - name: MINIO_SECRET_KEY
-          valueFrom:
-            secretKeyRef:
-              name: smap-stt-secrets
-              key: MINIO_SECRET_KEY
-        - name: REDIS_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: smap-stt-secrets
-              key: REDIS_PASSWORD
+          resources:
+            requests:
+              memory: "1Gi"
+              cpu: "1000m"
+              ephemeral-storage: "2Gi"
+            limits:
+              memory: "2Gi"
+              cpu: "2000m"
+              ephemeral-storage: "5Gi"
 
-        # Resource Limits (Optimized for Horizontal Scaling)
-        # =================================================================
-        # STRATEGY: "1 Core Per Pod" - Horizontal Scaling
-        # Reference: document/performance.md
-        #
-        # KEY INSIGHT: Service scales poorly beyond 2 cores due to:
-        # - Single-threaded Whisper.cpp inference
-        # - GIL contention in Python
-        # - Memory bandwidth saturation
-        #
-        # DECISION:
-        # - Request: 1 core (1000m) - Guarantees dedicated capacity
-        # - Limit: 2 cores (2000m) - Allows burst for GC/downloads
-        #
-        # IMPACT:
-        # - Pod density: 2.5x more pods per node vs 2.5 core request
-        # - Throughput: 2 pods × 1 core > 1 pod × 2 cores (less contention)
-        #
-        # MEMORY SIZING (unchanged):
-        # - Base/Small model: ~500MB-1GB RAM
-        # - Peak during processing: +200-500MB
-        # - Request 1Gi, Limit 2Gi fits Base/Small models well
-        #
-        # See document/performance.md for detailed benchmarks
-        # =================================================================
-        resources:
-          requests:
-            memory: "1Gi"     # Base memory for model (~500MB-1GB) + buffer
-            cpu: "1000m"      # 1 CPU core (horizontal scaling strategy)
-            ephemeral-storage: "2Gi"  # For audio chunking temp files
-          limits:
-            memory: "2Gi"     # Maximum memory (prevents OOM, allows spikes)
-            cpu: "2000m"      # 2 CPU cores (burst for GC/background tasks)
-            ephemeral-storage: "5Gi"  # Maximum temp storage for long audio
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
 
-        # Liveness Probe (Restart if unhealthy)
-        livenessProbe:
-          httpGet:
-            path: /health
-            port: http
-          initialDelaySeconds: 60  # Wait for model loading
-          periodSeconds: 30
-          timeoutSeconds: 10
-          failureThreshold: 3
-          successThreshold: 1
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
 
-        # Readiness Probe (Remove from load balancer if not ready)
-        readinessProbe:
-          httpGet:
-            path: /health
-            port: http
-          initialDelaySeconds: 30
-          periodSeconds: 10
-          timeoutSeconds: 5
-          failureThreshold: 3
-          successThreshold: 1
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 12
 
-        # Startup Probe (For slow-starting containers)
-        startupProbe:
-          httpGet:
-            path: /health
-            port: http
-          initialDelaySeconds: 10
-          periodSeconds: 10
-          timeoutSeconds: 5
-          failureThreshold: 12  # 120s total startup time
+          volumeMounts:
+            - name: logs
+              mountPath: /app/logs
+            - name: whisper-models
+              mountPath: /app/models
+            - name: tmp
+              mountPath: /tmp
 
-        # Volume Mounts (new location: models/ directory)
-        volumeMounts:
-        - name: logs
-          mountPath: /app/logs
-        - name: whisper-models
-          mountPath: /app/models/whisper_small_xeon
-        - name: tmp
-          mountPath: /tmp
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+                - ALL
 
-        # Security Context
-        securityContext:
-          allowPrivilegeEscalation: false
-          readOnlyRootFilesystem: false  # Needed for /tmp writes
-          capabilities:
-            drop:
-            - ALL
-
-      # Volumes
       volumes:
-      - name: logs
-        emptyDir:
-          sizeLimit: 1Gi
-      - name: whisper-models
-        persistentVolumeClaim:
-          claimName: smap-stt-models-pvc
-      - name: tmp
-        emptyDir:
-          sizeLimit: 5Gi  # For audio chunking temp files
+        - name: logs
+          emptyDir:
+            sizeLimit: 1Gi
+        - name: whisper-models
+          persistentVolumeClaim:
+            claimName: smap-stt-models-pvc
+        - name: tmp
+          emptyDir:
+            sizeLimit: 5Gi
 
-      # Pod Anti-Affinity (Spread pods across nodes)
       affinity:
         podAntiAffinity:
           preferredDuringSchedulingIgnoredDuringExecution:
-          - weight: 100
-            podAffinityTerm:
-              labelSelector:
-                matchExpressions:
-                - key: app
-                  operator: In
-                  values:
-                  - smap-speech-to-text
-              topologyKey: kubernetes.io/hostname
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app
+                      operator: In
+                      values:
+                        - smap-speech-to-text
+                topologyKey: kubernetes.io/hostname

@@ -1,15 +1,10 @@
-# Python
+# Python cache and build artifacts
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
-*.pyw
-*.pyz
-*.pywz
-*.pyzw
-*.pyzwz
-*.pyzwz
+*.py[cod]
+*$py.class
+*.so
 .Python
+build/
 develop-eggs/
 dist/
 downloads/
@@ -25,109 +20,73 @@ wheels/
 .installed.cfg
 *.egg
 
-# Virtual Environments
-myenv/
+# Virtual environments
+.venv/
 venv/
 env/
 ENV/
-.venv/
 
-# Environment Variables
+# Environment files
 .env
-.env.local
-.env.*.local
+.env.*
 
-# Log files
+# Logs
 logs/
 *.log
 
-# IDE files
+# IDE
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
 .cursor/
+.kiro/
 
-# Operating System files
+# OS
 .DS_Store
 Thumbs.db
 
-# Test files and outputs
+# Tests
+tests/
 .pytest_cache/
 .coverage
+.coveragerc
 htmlcov/
 .tox/
-test/
-tests/
-*_test.py
-test_*.py
 
-# Documentation (not needed in Docker image)
-docs/
+# Documentation
 document/
+docs/
 *.md
 !README.md
 
-# AI/Agent configuration (not needed in Docker image)
-.agent/
-.gemini/
-.kilo/
-.kilocode/
-.kiro/
+# Config files
 openspec/
-
-# Kubernetes manifests (not needed inside container)
 k8s/
 
-# Benchmark and proposal files
-*benchmark*.md
-*proposal*.md
-
-# Docker files (not needed inside image)
-.docker/
-docker-compose.yml
-docker-compose.*.yml
+# Docker
+docker-compose*.yml
 Dockerfile*
 .dockerignore
 
-# Git files (not needed in Docker image)
+# Git
 .git/
 .gitignore
 .gitattributes
 
-# Temporary files
-tmp/
-temp/
-/tmp/
-
-# Keep whisper/bin/ and scripts (executables needed)
-# Keep whisper/models/.gitkeep (to maintain directory structure)
-
-# Makefile and build files
-Makefile
+# Build files
+Makefile*
 *.sh
 !scripts/*.sh
-!whisper/*.sh
 
-# Other unnecessary files
-.cursorignore
-*.bak
-*.tmp
-*.cache
+# Temporary
+tmp/
+temp/
 
-# Coverage and test reports
-.coverage
-.coveragerc
-scripts/test_reports/
-scripts/test_audio/
-
-# Models directory (downloaded at runtime via entrypoint)
+# Models (downloaded at runtime)
 models/whisper_*/
 
-# Lock files and Python version (not needed in container)
+# Python version
 .python-version
-
-# Infrastructure folder - REQUIRED for production (WhisperLibraryAdapter, etc.)
-# infrastructure/
 

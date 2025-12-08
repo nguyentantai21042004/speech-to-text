@@ -1,3 +1,4 @@
+# Internal Service - ClusterIP for inter-service communication
 apiVersion: v1
 kind: Service
 metadata:
@@ -5,9 +6,28 @@ metadata:
   namespace: smap
   labels:
     app: smap-speech-to-text
+    service-type: internal
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
+      protocol: TCP
+  selector:
+    app: smap-speech-to-text
+---
+# External Service - LoadBalancer for dev/test access
+apiVersion: v1
+kind: Service
+metadata:
+  name: smap-speech-to-text-external
+  namespace: smap
+  labels:
+    app: smap-speech-to-text
+    service-type: external
   annotations:
     metallb.universe.tf/address-pool: smap-pool
-    metallb.universe.tf/ip-allocated-from-pool: smap-pool
 spec:
   type: LoadBalancer
   ports:
@@ -15,6 +35,5 @@ spec:
       port: 80
       targetPort: 8000
       protocol: TCP
-      nodePort: 30464
   selector:
     app: smap-speech-to-text
