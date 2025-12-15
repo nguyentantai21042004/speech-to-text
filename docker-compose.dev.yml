@@ -21,7 +21,7 @@ services:
       - ./core:/app/core
       - ./services:/app/services
       - ./internal:/app/internal
-      - ./interface:/app/interface
+      - ./interfaces:/app/interfaces
       - ./infrastructure:/app/infrastructure
       - ./scripts:/app/scripts
       - ./logs:/app/logs
