@@ -43,6 +43,7 @@ class AsyncTranscriptionService:
         Submit async transcription job.
 
         Checks for idempotency (if job exists, return existing status).
+        Allows retry for FAILED jobs by deleting old state and creating new job.
         Sets PROCESSING state in Redis and returns immediately.
 
         Args:
@@ -56,14 +57,22 @@ class AsyncTranscriptionService:
         # Check if job already exists (idempotency)
         existing_state = await self.redis_client.get_job_state(request_id)
         if existing_state:
-            logger.info(
-                f"Job {request_id} already exists with status: {existing_state.get('status')}"
-            )
-            return {
-                "request_id": request_id,
-                "status": existing_state.get("status", "PROCESSING"),
-                "message": f"Job already exists with status: {existing_state.get('status')}",
-            }
+            status = existing_state.get("status", "PROCESSING")
+
+            # Allow retry for FAILED jobs
+            if status == "FAILED":
+                logger.info(f"Job {request_id} previously FAILED, allowing retry")
+                # Delete old FAILED job to allow retry
+                await self.redis_client.delete_job(request_id)
+                # Fall through to create new job
+            else:
+                # PROCESSING or COMPLETED - return existing status (idempotency)
+                logger.info(f"Job {request_id} already exists with status: {status}")
+                return {
+                    "request_id": request_id,
+                    "status": status,
+                    "message": f"Job already exists with status: {status}",
+                }
 
         # Set initial PROCESSING state
         initial_state = {

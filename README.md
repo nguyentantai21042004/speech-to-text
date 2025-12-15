@@ -377,6 +377,15 @@ Submit async transcription job. Ideal for long audio (> 1 minute).
 }
 ```
 
+**Idempotency & Retry Behavior:**
+
+| Current Status | Behavior                                  |
+| -------------- | ----------------------------------------- |
+| PROCESSING     | Return current status (idempotent)        |
+| COMPLETED      | Return existing result (no re-processing) |
+| FAILED         | Delete old job → Create new job (retry)   |
+| Not exists     | Create new job                            |
+
 #### GET `/api/transcribe/{request_id}` (Polling)
 
 Poll job status until COMPLETED or FAILED.
@@ -399,6 +408,8 @@ Poll job status until COMPLETED or FAILED.
 ```
 
 **Polling Strategy:** Poll every 2-5 seconds. Jobs expire after 1 hour (`REDIS_JOB_TTL`).
+
+**Retry Mechanism:** If a job previously FAILED, submitting the same `request_id` will automatically retry (delete old job, create new one). PROCESSING and COMPLETED jobs are idempotent (return existing status).
 
 #### GET `/health`
 

@@ -238,6 +238,15 @@ Content-Type: application/json
 }
 ```
 
+**Idempotency & Retry Behavior:**
+
+| Current Status | Behavior                                  |
+| -------------- | ----------------------------------------- |
+| PROCESSING     | Return current status (idempotent)        |
+| COMPLETED      | Return existing result (no re-processing) |
+| FAILED         | Delete old job → Create new job (retry)   |
+| Not exists     | Create new job                            |
+
 **Poll Status:**
 
 ```http
@@ -418,10 +427,11 @@ LOG_FILE_ENABLED=true
    - Tránh timeout
    - Không block client
 
-2. **Implement retry logic**
+2. **Retry mechanism đã được tích hợp sẵn**
 
-   - Retry với exponential backoff cho transient errors
-   - Không retry permanent errors
+   - FAILED jobs tự động cho phép retry khi submit lại cùng `request_id`
+   - PROCESSING/COMPLETED jobs giữ nguyên (idempotency)
+   - Client chỉ cần submit lại request nếu job FAILED
 
 3. **Sử dụng MinIO URLs khi có thể**
 
@@ -485,13 +495,14 @@ def transcribe_async(media_url: str, request_id: str) -> dict:
 
 ### Common Issues
 
-| Vấn Đề              | Nguyên Nhân                    | Giải Pháp                       |
-| ------------------- | ------------------------------ | ------------------------------- |
-| 401 Unauthorized    | API key sai/thiếu              | Kiểm tra `X-API-Key` header     |
-| 408 Timeout         | Audio quá dài                  | Sử dụng async API               |
-| 413 File too large  | File > 500MB                   | Giảm kích thước hoặc tăng limit |
-| 404 Job not found   | Job expired hoặc không tồn tại | Kiểm tra `request_id`, tăng TTL |
-| Empty transcription | Audio silent/noise             | Kiểm tra chất lượng audio       |
+| Vấn Đề              | Nguyên Nhân                    | Giải Pháp                             |
+| ------------------- | ------------------------------ | ------------------------------------- |
+| 401 Unauthorized    | API key sai/thiếu              | Kiểm tra `X-API-Key` header           |
+| 408 Timeout         | Audio quá dài                  | Sử dụng async API                     |
+| 413 File too large  | File > 500MB                   | Giảm kích thước hoặc tăng limit       |
+| 404 Job not found   | Job expired hoặc không tồn tại | Kiểm tra `request_id`, tăng TTL       |
+| Empty transcription | Audio silent/noise             | Kiểm tra chất lượng audio             |
+| Job stuck at FAILED | Lỗi trước đó                   | Submit lại cùng `request_id` để retry |
 
 ### Debug Mode
 

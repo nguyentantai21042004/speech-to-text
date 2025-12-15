@@ -10,8 +10,8 @@ Response format:
 }
 
 Tests cover:
-- 4.1 Submit job endpoint (POST /api/v1/transcribe)
-- 4.2 Polling endpoint (GET /api/v1/transcribe/{request_id})
+- 4.1 Submit job endpoint (POST /api/transcribe)
+- 4.2 Polling endpoint (GET /api/transcribe/{request_id})
 - 4.3 Idempotency (submit same request_id twice)
 """
 
@@ -82,7 +82,7 @@ def create_test_client(mock_service):
 
 
 class TestSubmitJobEndpoint:
-    """Test 4.1: Submit job endpoint (POST /api/v1/transcribe)."""
+    """Test 4.1: Submit job endpoint (POST /api/transcribe)."""
 
     def test_submit_job_success(self):
         """Test successful job submission returns unified format."""
@@ -90,7 +90,7 @@ class TestSubmitJobEndpoint:
         client = create_test_client(mock_service)
 
         response = client.post(
-            "/api/v1/transcribe",
+            "/api/transcribe",
             json={
                 "request_id": "test-job-123",
                 "media_url": "http://example.com/audio.mp3",
@@ -115,7 +115,7 @@ class TestSubmitJobEndpoint:
         client = create_test_client(mock_service)
 
         response = client.post(
-            "/api/v1/transcribe",
+            "/api/transcribe",
             json={"media_url": "http://example.com/audio.mp3"},
             headers={"X-API-Key": "test-key"},
         )
@@ -128,7 +128,7 @@ class TestSubmitJobEndpoint:
         client = create_test_client(mock_service)
 
         response = client.post(
-            "/api/v1/transcribe",
+            "/api/transcribe",
             json={"request_id": "test-job-123"},
             headers={"X-API-Key": "test-key"},
         )
@@ -141,7 +141,7 @@ class TestSubmitJobEndpoint:
         client = create_test_client(mock_service)
 
         response = client.post(
-            "/api/v1/transcribe",
+            "/api/transcribe",
             json={
                 "request_id": "test-job-123",
                 "media_url": "ftp://example.com/audio.mp3",
@@ -157,7 +157,7 @@ class TestSubmitJobEndpoint:
         client = create_test_client(mock_service)
 
         response = client.post(
-            "/api/v1/transcribe",
+            "/api/transcribe",
             json={
                 "request_id": "   ",
                 "media_url": "http://example.com/audio.mp3",
@@ -169,7 +169,7 @@ class TestSubmitJobEndpoint:
 
 
 class TestPollingEndpoint:
-    """Test 4.2: Polling endpoint (GET /api/v1/transcribe/{request_id})."""
+    """Test 4.2: Polling endpoint (GET /api/transcribe/{request_id})."""
 
     def test_poll_processing_job(self):
         """Test polling a job in PROCESSING state."""
@@ -178,7 +178,7 @@ class TestPollingEndpoint:
         client = create_test_client(mock_service)
 
         response = client.get(
-            "/api/v1/transcribe/test-job-123",
+            "/api/transcribe/test-job-123",
             headers={"X-API-Key": "test-key"},
         )
 
@@ -205,7 +205,7 @@ class TestPollingEndpoint:
         client = create_test_client(mock_service)
 
         response = client.get(
-            "/api/v1/transcribe/test-job-123",
+            "/api/transcribe/test-job-123",
             headers={"X-API-Key": "test-key"},
         )
 
@@ -230,7 +230,7 @@ class TestPollingEndpoint:
         client = create_test_client(mock_service)
 
         response = client.get(
-            "/api/v1/transcribe/test-job-123",
+            "/api/transcribe/test-job-123",
             headers={"X-API-Key": "test-key"},
         )
 
@@ -249,7 +249,7 @@ class TestPollingEndpoint:
         client = create_test_client(mock_service)
 
         response = client.get(
-            "/api/v1/transcribe/nonexistent-job",
+            "/api/transcribe/nonexistent-job",
             headers={"X-API-Key": "test-key"},
         )
 
@@ -270,7 +270,7 @@ class TestIdempotency:
         client = create_test_client(mock_service)
 
         response = client.post(
-            "/api/v1/transcribe",
+            "/api/transcribe",
             json={
                 "request_id": "duplicate-job-123",
                 "media_url": "http://example.com/audio.mp3",
@@ -296,7 +296,7 @@ class TestIdempotency:
         client = create_test_client(mock_service)
 
         response = client.post(
-            "/api/v1/transcribe",
+            "/api/transcribe",
             json={
                 "request_id": "completed-job-123",
                 "media_url": "http://example.com/audio.mp3",
@@ -318,7 +318,7 @@ class TestIdempotency:
 
         # First submission
         response1 = client.post(
-            "/api/v1/transcribe",
+            "/api/transcribe",
             json={
                 "request_id": "new-job-123",
                 "media_url": "http://example.com/audio.mp3",
@@ -332,7 +332,7 @@ class TestIdempotency:
 
         # Second submission - duplicate
         response2 = client.post(
-            "/api/v1/transcribe",
+            "/api/transcribe",
             json={
                 "request_id": "new-job-123",
                 "media_url": "http://example.com/audio.mp3",
@@ -356,7 +356,7 @@ class TestUnifiedErrorFormat:
         client = create_test_client(mock_service)
 
         response = client.post(
-            "/api/v1/transcribe",
+            "/api/transcribe",
             json={"request_id": "test"},  # Missing media_url
             headers={"X-API-Key": "test-key"},
         )
@@ -371,7 +371,7 @@ class TestUnifiedErrorFormat:
         client = create_test_client(mock_service)
 
         response = client.get(
-            "/api/v1/transcribe/nonexistent",
+            "/api/transcribe/nonexistent",
             headers={"X-API-Key": "test-key"},
         )
 
@@ -380,3 +380,294 @@ class TestUnifiedErrorFormat:
         assert data["error_code"] == 1
         assert "message" in data
         assert "errors" in data
+
+
+class TestFailedJobRetry:
+    """Test retry mechanism for FAILED jobs."""
+
+    def test_submit_failed_job_allows_retry(self):
+        """Test that submitting request_id of FAILED job creates new job (retry)."""
+        # Setup: Create a mock that simulates the new retry behavior
+        mock_service = MagicMock()
+        job_states = {
+            "failed-job-123": {
+                "status": "FAILED",
+                "error": "Previous error",
+            }
+        }
+
+        async def mock_submit_job(request_id, media_url, language=None):
+            if request_id in job_states:
+                existing = job_states[request_id]
+                status = existing.get("status", "PROCESSING")
+
+                # NEW BEHAVIOR: Allow retry for FAILED jobs
+                if status == "FAILED":
+                    # Delete old job and create new one
+                    job_states[request_id] = {"status": "PROCESSING"}
+                    return {
+                        "request_id": request_id,
+                        "status": "PROCESSING",
+                        "message": "Job submitted successfully",
+                    }
+                else:
+                    return {
+                        "request_id": request_id,
+                        "status": status,
+                        "message": f"Job already exists with status: {status}",
+                    }
+
+            job_states[request_id] = {"status": "PROCESSING"}
+            return {
+                "request_id": request_id,
+                "status": "PROCESSING",
+                "message": "Job submitted successfully",
+            }
+
+        async def mock_get_job_status(request_id):
+            return job_states.get(request_id)
+
+        async def mock_process_job_background(request_id, media_url, language=None):
+            job_states[request_id] = {
+                "status": "COMPLETED",
+                "transcription": "Retry successful",
+            }
+
+        mock_service.submit_job = mock_submit_job
+        mock_service.get_job_status = mock_get_job_status
+        mock_service.process_job_background = mock_process_job_background
+
+        client = create_test_client(mock_service)
+
+        # Submit to FAILED job - should allow retry
+        response = client.post(
+            "/api/transcribe",
+            json={
+                "request_id": "failed-job-123",
+                "media_url": "http://example.com/audio.mp3",
+            },
+            headers={"X-API-Key": "test-key"},
+        )
+
+        assert response.status_code == 202
+        data = response.json()
+        assert data["error_code"] == 0
+        # Should be PROCESSING (new job created), not FAILED
+        assert data["data"]["status"] == "PROCESSING"
+        # Message should indicate new job, not "already exists"
+        assert "submitted successfully" in data["message"].lower()
+
+    def test_submit_processing_job_no_retry(self):
+        """Test that PROCESSING job is NOT retried (idempotency preserved)."""
+        mock_service = MagicMock()
+        job_states = {"processing-job-123": {"status": "PROCESSING"}}
+
+        async def mock_submit_job(request_id, media_url, language=None):
+            if request_id in job_states:
+                existing = job_states[request_id]
+                status = existing.get("status", "PROCESSING")
+
+                if status == "FAILED":
+                    job_states[request_id] = {"status": "PROCESSING"}
+                    return {
+                        "request_id": request_id,
+                        "status": "PROCESSING",
+                        "message": "Job submitted successfully",
+                    }
+                else:
+                    # PROCESSING or COMPLETED - return existing
+                    return {
+                        "request_id": request_id,
+                        "status": status,
+                        "message": f"Job already exists with status: {status}",
+                    }
+
+            job_states[request_id] = {"status": "PROCESSING"}
+            return {
+                "request_id": request_id,
+                "status": "PROCESSING",
+                "message": "Job submitted successfully",
+            }
+
+        async def mock_get_job_status(request_id):
+            return job_states.get(request_id)
+
+        mock_service.submit_job = mock_submit_job
+        mock_service.get_job_status = mock_get_job_status
+        mock_service.process_job_background = MagicMock()
+
+        client = create_test_client(mock_service)
+
+        response = client.post(
+            "/api/transcribe",
+            json={
+                "request_id": "processing-job-123",
+                "media_url": "http://example.com/audio.mp3",
+            },
+            headers={"X-API-Key": "test-key"},
+        )
+
+        assert response.status_code == 202
+        data = response.json()
+        assert data["error_code"] == 0
+        assert data["data"]["status"] == "PROCESSING"
+        assert "already exists" in data["message"].lower()
+
+    def test_submit_completed_job_no_retry(self):
+        """Test that COMPLETED job is NOT retried (idempotency preserved)."""
+        mock_service = MagicMock()
+        job_states = {
+            "completed-job-123": {
+                "status": "COMPLETED",
+                "transcription": "Already done",
+            }
+        }
+
+        async def mock_submit_job(request_id, media_url, language=None):
+            if request_id in job_states:
+                existing = job_states[request_id]
+                status = existing.get("status", "PROCESSING")
+
+                if status == "FAILED":
+                    job_states[request_id] = {"status": "PROCESSING"}
+                    return {
+                        "request_id": request_id,
+                        "status": "PROCESSING",
+                        "message": "Job submitted successfully",
+                    }
+                else:
+                    return {
+                        "request_id": request_id,
+                        "status": status,
+                        "message": f"Job already exists with status: {status}",
+                    }
+
+            job_states[request_id] = {"status": "PROCESSING"}
+            return {
+                "request_id": request_id,
+                "status": "PROCESSING",
+                "message": "Job submitted successfully",
+            }
+
+        async def mock_get_job_status(request_id):
+            return job_states.get(request_id)
+
+        mock_service.submit_job = mock_submit_job
+        mock_service.get_job_status = mock_get_job_status
+        mock_service.process_job_background = MagicMock()
+
+        client = create_test_client(mock_service)
+
+        response = client.post(
+            "/api/transcribe",
+            json={
+                "request_id": "completed-job-123",
+                "media_url": "http://example.com/audio.mp3",
+            },
+            headers={"X-API-Key": "test-key"},
+        )
+
+        assert response.status_code == 202
+        data = response.json()
+        assert data["error_code"] == 0
+        assert data["data"]["status"] == "COMPLETED"
+        assert "already exists" in data["message"].lower()
+
+    def test_retry_flow_fail_then_success(self):
+        """Test full retry flow: submit → fail → retry → success."""
+        mock_service = MagicMock()
+        job_states = {}
+        call_count = {"submit": 0}
+
+        async def mock_submit_job(request_id, media_url, language=None):
+            call_count["submit"] += 1
+
+            if request_id in job_states:
+                existing = job_states[request_id]
+                status = existing.get("status", "PROCESSING")
+
+                if status == "FAILED":
+                    # Allow retry
+                    job_states[request_id] = {"status": "PROCESSING"}
+                    return {
+                        "request_id": request_id,
+                        "status": "PROCESSING",
+                        "message": "Job submitted successfully",
+                    }
+                else:
+                    return {
+                        "request_id": request_id,
+                        "status": status,
+                        "message": f"Job already exists with status: {status}",
+                    }
+
+            job_states[request_id] = {"status": "PROCESSING"}
+            return {
+                "request_id": request_id,
+                "status": "PROCESSING",
+                "message": "Job submitted successfully",
+            }
+
+        async def mock_get_job_status(request_id):
+            return job_states.get(request_id)
+
+        mock_service.submit_job = mock_submit_job
+        mock_service.get_job_status = mock_get_job_status
+        mock_service.process_job_background = MagicMock()
+
+        client = create_test_client(mock_service)
+
+        # Step 1: Submit new job
+        response1 = client.post(
+            "/api/transcribe",
+            json={
+                "request_id": "retry-flow-123",
+                "media_url": "http://example.com/audio.mp3",
+            },
+            headers={"X-API-Key": "test-key"},
+        )
+        assert response1.status_code == 202
+        assert response1.json()["data"]["status"] == "PROCESSING"
+
+        # Step 2: Simulate job failure
+        job_states["retry-flow-123"] = {
+            "status": "FAILED",
+            "error": "Simulated failure",
+        }
+
+        # Step 3: Poll - should see FAILED
+        response2 = client.get(
+            "/api/transcribe/retry-flow-123",
+            headers={"X-API-Key": "test-key"},
+        )
+        assert response2.status_code == 200
+        assert response2.json()["data"]["status"] == "FAILED"
+
+        # Step 4: Retry - submit again
+        response3 = client.post(
+            "/api/transcribe",
+            json={
+                "request_id": "retry-flow-123",
+                "media_url": "http://example.com/audio.mp3",
+            },
+            headers={"X-API-Key": "test-key"},
+        )
+        assert response3.status_code == 202
+        # Should be PROCESSING again (retry allowed)
+        assert response3.json()["data"]["status"] == "PROCESSING"
+        assert "submitted successfully" in response3.json()["message"].lower()
+
+        # Step 5: Simulate success
+        job_states["retry-flow-123"] = {
+            "status": "COMPLETED",
+            "transcription": "Retry successful!",
+        }
+
+        # Step 6: Poll - should see COMPLETED
+        response4 = client.get(
+            "/api/transcribe/retry-flow-123",
+            headers={"X-API-Key": "test-key"},
+        )
+        assert response4.status_code == 200
+        assert response4.json()["data"]["status"] == "COMPLETED"
+        assert response4.json()["data"]["transcription"] == "Retry successful!"

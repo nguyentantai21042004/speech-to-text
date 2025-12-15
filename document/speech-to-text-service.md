@@ -233,6 +233,16 @@ docker run -d \
 
 ## Integration Guide
 
+### Async API - Idempotency & Retry
+
+| Current Status | Behavior khi submit cùng `request_id`     |
+| -------------- | ----------------------------------------- |
+| PROCESSING     | Trả về status hiện tại (idempotent)       |
+| COMPLETED      | Trả về kết quả cũ (không xử lý lại)       |
+| FAILED         | Xóa job cũ → Tạo job mới (cho phép retry) |
+
+**Lưu ý:** `request_id` thường được tạo từ MD5 hash của `media_url` (phía client), nên cùng video sẽ có cùng `request_id`. Cơ chế retry cho phép xử lý lại các job đã FAILED.
+
 ### Python Client Example
 
 ```python

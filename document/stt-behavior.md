@@ -64,11 +64,16 @@ Speech-to-Text (STT) Service là một dịch vụ chuyển đổi âm thanh th�
 **Các bước xử lý:**
 
 1. Client submit job với `request_id`, `media_url`, `language`
-2. Service lưu trạng thái PROCESSING vào Redis
-3. Trả về 202 Accepted ngay lập tức
-4. Background task thực hiện transcription
-5. Cập nhật Redis với COMPLETED hoặc FAILED
-6. Client polling để lấy kết quả
+2. Service kiểm tra job đã tồn tại chưa:
+   - **PROCESSING**: Trả về status hiện tại
+   - **COMPLETED**: Trả về kết quả cũ
+   - **FAILED**: Xóa job cũ, tạo job mới (retry)
+   - **Không tồn tại**: Tạo job mới
+3. Lưu trạng thái PROCESSING vào Redis
+4. Trả về 202 Accepted ngay lập tức
+5. Background task thực hiện transcription
+6. Cập nhật Redis với COMPLETED hoặc FAILED
+7. Client polling để lấy kết quả
 
 ## Business Rules
 
@@ -155,7 +160,7 @@ Trước khi transcribe, audio được validate:
 
 ```
 PROCESSING → COMPLETED
-          → FAILED
+          → FAILED → (retry) → PROCESSING
 ```
 
 ### Redis Key Format
@@ -169,10 +174,25 @@ stt:job:{request_id}
 - Mặc định: 1 giờ (3600s)
 - Configurable qua `REDIS_JOB_TTL`
 
-### Idempotency
+### Idempotency & Retry Mechanism
 
-- Nếu job với `request_id` đã tồn tại, trả về trạng thái hiện tại
-- Không tạo job mới
+| Trạng thái hiện tại | Hành vi khi submit cùng `request_id`      |
+| ------------------- | ----------------------------------------- |
+| **PROCESSING**      | Trả về status hiện tại (idempotency)      |
+| **COMPLETED**       | Trả về kết quả cũ (không xử lý lại)       |
+| **FAILED**          | Xóa job cũ → Tạo job mới (cho phép retry) |
+
+**Chi tiết:**
+
+- **PROCESSING**: Job đang được xử lý → trả về status để client tiếp tục polling
+- **COMPLETED**: Job đã hoàn thành → trả về kết quả cũ, tiết kiệm tài nguyên
+- **FAILED**: Job đã thất bại → cho phép retry bằng cách xóa job cũ và tạo job mới
+
+**Lý do cho phép retry FAILED jobs:**
+
+- `request_id` được tạo từ MD5 hash của `media_url` (phía client)
+- Cùng video → Cùng URL → Cùng `request_id`
+- Nếu không cho retry, các job FAILED sẽ block vĩnh viễn
 
 ## Response Format
 
