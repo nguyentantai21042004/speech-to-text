@@ -80,7 +80,10 @@ class TestTranscribeV2Authentication:
         )
         assert response.status_code == 401
         data = response.json()
-        assert "Missing API key" in data.get("detail", data.get("message", ""))
+        # Auth dependency might return simple dict or unified error.
+        # Assuming unified error from exception handler or simple detail from FastAPI
+        detail = data.get("detail") or data.get("message")
+        assert "Missing API key" in detail
 
     def test_invalid_api_key(self, client_no_auth):
         """Should return 401 when API key is invalid."""
@@ -111,8 +114,9 @@ class TestTranscribeV2Authentication:
         )
         assert response.status_code == 200
         data = response.json()
-        assert data["status"] == "success"
-        assert data["transcription"] == "Test transcription"
+        assert data["error_code"] == 0
+        assert data["message"] == "Transcription successful"
+        assert data["data"]["transcription"] == "Test transcription"
 
 
 class TestTranscribeV2RequestValidation:
@@ -178,16 +182,22 @@ class TestTranscribeV2ResponseFormat:
         assert response.status_code == 200
         data = response.json()
 
-        # Verify all required fields present
-        assert "status" in data
-        assert "transcription" in data
-        assert "duration" in data
-        assert "confidence" in data
-        assert "processing_time" in data
+        # Verify unified format fields
+        assert "error_code" in data
+        assert "message" in data
+        assert "data" in data
 
         # Verify values
-        assert data["status"] == "success"
-        assert data["transcription"] == "Nội dung video nói về xe VinFast VF3"
+        assert data["error_code"] == 0
+        assert data["message"] == "Transcription successful"
+
+        # Verify data payload
+        payload = data["data"]
+        assert "transcription" in payload
+        assert "duration" in payload
+        assert "confidence" in payload
+        assert "processing_time" in payload
+        assert payload["transcription"] == "Nội dung video nói về xe VinFast VF3"
 
 
 class TestTranscribeV2ErrorHandling:
@@ -204,9 +214,10 @@ class TestTranscribeV2ErrorHandling:
             json={"media_url": TEST_MEDIA_URL, "language": "vi"},
             headers={"X-API-Key": VALID_API_KEY},
         )
-        assert response.status_code == 200
+        assert response.status_code == 408
         data = response.json()
-        assert data["status"] == "timeout"
+        assert data["error_code"] == 1
+        assert "timeout" in data["message"].lower()
 
     def test_file_too_large_error(self, client_with_auth, mock_transcribe_service):
         """Should return 413 when file exceeds size limit."""
@@ -220,6 +231,8 @@ class TestTranscribeV2ErrorHandling:
             headers={"X-API-Key": VALID_API_KEY},
         )
         assert response.status_code == 413
+        data = response.json()
+        assert "too large" in data["errors"]["detail"]
 
     def test_invalid_url_error(self, client_with_auth, mock_transcribe_service):
         """Should return 400 when URL cannot be fetched."""
@@ -233,6 +246,8 @@ class TestTranscribeV2ErrorHandling:
             headers={"X-API-Key": VALID_API_KEY},
         )
         assert response.status_code == 400
+        data = response.json()
+        assert "Failed to download" in data["errors"]["detail"]
 
     def test_internal_server_error(self, client_with_auth, mock_transcribe_service):
         """Should return 500 on unexpected errors."""
@@ -246,3 +261,5 @@ class TestTranscribeV2ErrorHandling:
             headers={"X-API-Key": VALID_API_KEY},
         )
         assert response.status_code == 500
+        data = response.json()
+        assert "Unexpected error" in data["errors"]["detail"]

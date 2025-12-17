@@ -222,9 +222,9 @@ def setup_logger() -> None:
             # JSON format for production/log aggregation
             logger.add(
                 sys.stdout,
-                format="{message}",
+                format=serialize_log_record,
                 level=log_level,
-                serialize=True,
+                colorize=False,
             )
 
             if log_file_enabled:
@@ -236,9 +236,9 @@ def setup_logger() -> None:
                     rotation="100 MB",
                     retention="30 days",
                     compression="zip",
-                    format="{message}",
+                    format=serialize_log_record,
                     level="DEBUG",
-                    serialize=True,
+                    colorize=False,
                 )
 
                 logger.add(
@@ -246,9 +246,9 @@ def setup_logger() -> None:
                     rotation="100 MB",
                     retention="30 days",
                     compression="zip",
-                    format="{message}",
+                    format=serialize_log_record,
                     level="ERROR",
-                    serialize=True,
+                    colorize=False,
                 )
         else:
             # Console format (default) - colored, human-readable
@@ -299,6 +299,61 @@ def setup_logger() -> None:
 # =============================================================================
 
 
+def serialize_log_record(record: dict) -> str:
+    """
+    Serialize log record to a flat JSON dictionary.
+
+    This replaces Loguru's default nested JSON serialization with a cleaner,
+    flattened structure suitable for log aggregation (ELK, Datadog, etc.).
+
+    Args:
+        record: Loguru record dictionary
+
+    Returns:
+        JSON string representation of the log record
+    """
+    import json
+
+    # Base fields
+    log_record = {
+        "timestamp": record["time"].isoformat(),
+        "level": record["level"].name,
+        "message": record["message"],
+        "module": record["module"],
+        "function": record["function"],
+        "line": record["line"],
+    }
+
+    # Add exception info if present
+    if record.get("exception"):
+        exception = record["exception"]
+        log_record["exception"] = {
+            "type": exception.type.__name__ if exception.type else "Unknown",
+            "message": str(exception.value),
+            # Avoid full traceback in JSON to keep it clean, or include it if needed
+            # "traceback": str(exception.traceback)
+        }
+
+    # Flatten extra fields
+    # Note: 'extra' contains context variables bound via logger.bind()
+    if record.get("extra"):
+        for key, value in record["extra"].items():
+            # Check if value is JSON serializable
+            try:
+                json.dumps(value)
+                log_record[key] = value
+            except (TypeError, OverflowError):
+                # Fallback to string representation for non-serializable objects
+                log_record[key] = str(value)
+
+    # Escape curly braces for Loguru's format string since it calls format() on the result
+    # Also escape < to prevent Loguru from interpreting it as a color tag
+    return (
+        json.dumps(log_record).replace("{", "{{").replace("}", "}}").replace("<", "\\<")
+        + "\n"
+    )
+
+
 def setup_json_logging(level: str = "INFO") -> None:
     """
     Configure JSON logging format for production environments.
@@ -319,9 +374,9 @@ def setup_json_logging(level: str = "INFO") -> None:
     # Console handler with JSON format
     logger.add(
         sys.stdout,
-        format="{message}",
+        format=serialize_log_record,
         level=level,
-        serialize=True,  # Loguru's built-in JSON serialization
+        colorize=False,
     )
 
     # File handler with JSON format
@@ -333,9 +388,9 @@ def setup_json_logging(level: str = "INFO") -> None:
         rotation="100 MB",
         retention="30 days",
         compression="zip",
-        format="{message}",
+        format=serialize_log_record,
         level="DEBUG",
-        serialize=True,
+        colorize=False,
     )
 
     # Error file handler with JSON format
@@ -344,16 +399,17 @@ def setup_json_logging(level: str = "INFO") -> None:
         rotation="100 MB",
         retention="30 days",
         compression="zip",
-        format="{message}",
+        format=serialize_log_record,
         level="ERROR",
-        serialize=True,
+        colorize=False,
     )
 
     # Intercept stdlib logging
     intercept_standard_logging()
     configure_third_party_loggers()
 
-    logger.info(f"JSON logging configured (level={level})")
+    # Note: Using print() here might break JSON parsing if mixed with logs
+    # logger.info(f"JSON logging configured (level={level})")
 
 
 # Configure logger on module import
@@ -366,5 +422,6 @@ __all__ = [
     "configure_third_party_loggers",
     "intercept_standard_logging",
     "setup_json_logging",
+    "serialize_log_record",
     "InterceptHandler",
 ]

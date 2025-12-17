@@ -74,8 +74,9 @@ def test_transcribe_endpoint_success(client, mock_transcribe_service):
 
     assert response.status_code == 200
     data = response.json()
-    assert data["status"] == "success"
-    assert data["transcription"] == "Hello World"
+    assert data["error_code"] == 0
+    assert data["message"] == "Transcription successful"
+    assert data["data"]["transcription"] == "Hello World"
 
 
 def test_transcribe_endpoint_too_large(client, mock_transcribe_service):
@@ -91,7 +92,7 @@ def test_transcribe_endpoint_too_large(client, mock_transcribe_service):
     )
 
     assert response.status_code == 413
-    assert "too large" in response.json()["detail"]
+    assert "too large" in response.json()["errors"]["detail"]
 
 
 def test_transcribe_endpoint_error(client, mock_transcribe_service):
@@ -107,7 +108,8 @@ def test_transcribe_endpoint_error(client, mock_transcribe_service):
     )
 
     assert response.status_code == 500
-    assert "Internal server error" in response.json()["detail"]
+    # utils.py json_error_response wraps errors in {"detail": ...}
+    assert "Internal error" in response.json()["errors"]["detail"]
 
 
 def test_transcribe_endpoint_timeout(client, mock_transcribe_service):
@@ -122,10 +124,10 @@ def test_transcribe_endpoint_timeout(client, mock_transcribe_service):
         headers={"X-API-Key": "test-key"},
     )
 
-    assert response.status_code == 200
+    assert response.status_code == 408
     data = response.json()
-    assert data["status"] == "timeout"
-    assert data["transcription"] == ""
+    assert data["error_code"] == 1
+    assert "timeout" in data["message"].lower()
 
 
 def test_transcribe_endpoint_invalid_url(client, mock_transcribe_service):
@@ -141,4 +143,4 @@ def test_transcribe_endpoint_invalid_url(client, mock_transcribe_service):
     )
 
     assert response.status_code == 400
-    assert "Failed to download" in response.json()["detail"]
+    assert "Failed to download" in response.json()["errors"]["detail"]
