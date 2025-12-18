@@ -95,33 +95,36 @@ class TranscribeService:
         return get_minio_audio_downloader()
 
     async def transcribe_from_url(
-        self, audio_url: str, language: Optional[str] = None
+        self,
+        audio_url: str,
+        language: Optional[str] = None,
+        use_timeout: bool = True,
     ) -> Dict[str, Any]:
         """
-        Download audio from URL and transcribe it with timeout protection.
-        Automatically uses chunking for audio > 30 seconds with adaptive timeout.
+        Download audio from URL and transcribe it.
 
         Args:
             audio_url: URL to download audio from
             language: Optional language hint for transcription (overrides config)
+            use_timeout: If True, apply adaptive timeout. Set False for async/background jobs.
 
         Returns:
             Dictionary containing transcription text and metadata
 
         Raises:
-            asyncio.TimeoutError: If transcription exceeds configured timeout
+            asyncio.TimeoutError: If transcription exceeds timeout (only when use_timeout=True)
             ValueError: If download fails or file too large
         """
         file_id = str(uuid.uuid4())
-        # Extract extension from URL (before query params) to help ffprobe detect format
         url_path = audio_url.split("?")[0]
         ext = Path(url_path).suffix or ".tmp"
         temp_file_path = self.temp_dir / f"{file_id}{ext}"
+        adaptive_timeout = 0
 
         try:
             logger.info(f"Processing transcription request for URL: {audio_url}")
 
-            # 1. Download file using IAudioDownloader
+            # 1. Download file
             start_download = time.time()
             file_size_mb = await self.audio_downloader.download(
                 audio_url, temp_file_path
@@ -129,7 +132,7 @@ class TranscribeService:
             download_duration = time.time() - start_download
             logger.info(f"Downloaded {file_size_mb:.2f}MB in {download_duration:.2f}s")
 
-            # 2. Detect audio duration for adaptive timeout using ITranscriber
+            # 2. Detect audio duration
             audio_duration = 0.0
             try:
                 audio_duration = self.transcriber.get_audio_duration(
@@ -139,19 +142,14 @@ class TranscribeService:
             except Exception as e:
                 logger.warning(f"Failed to detect audio duration: {e}")
 
-            # 3. Calculate adaptive timeout
+            # 3. Calculate adaptive timeout (only used if use_timeout=True)
             base_timeout = settings.transcribe_timeout_seconds
             if audio_duration > 0:
                 adaptive_timeout = max(base_timeout, int(audio_duration * 1.5))
             else:
                 adaptive_timeout = base_timeout
 
-            logger.info(
-                f"Using adaptive timeout: {adaptive_timeout}s (base={base_timeout}s, audio={audio_duration:.2f}s)"
-            )
-
-            # 4. Transcribe with timeout using ITranscriber
-            # Use dedicated executor for CPU-bound transcription
+            # 4. Transcribe
             loop = asyncio.get_running_loop()
             executor = get_transcription_executor()
             start_transcribe = time.time()
@@ -159,17 +157,22 @@ class TranscribeService:
             lang = language or settings.whisper_language
             model = settings.whisper_model
 
-            logger.info(
-                f"Starting transcription (language={lang}, timeout={adaptive_timeout}s, executor=dedicated)"
+            timeout_info = (
+                f"timeout={adaptive_timeout}s" if use_timeout else "no timeout (async)"
             )
+            logger.info(f"Starting transcription (language={lang}, {timeout_info})")
 
             def _transcribe():
                 return self.transcriber.transcribe(str(temp_file_path), lang)
 
-            transcription_text = await asyncio.wait_for(
-                loop.run_in_executor(executor, _transcribe),
-                timeout=adaptive_timeout,
-            )
+            if use_timeout:
+                transcription_text = await asyncio.wait_for(
+                    loop.run_in_executor(executor, _transcribe),
+                    timeout=adaptive_timeout,
+                )
+            else:
+                # No timeout for async/background jobs
+                transcription_text = await loop.run_in_executor(executor, _transcribe)
 
             transcribe_duration = time.time() - start_transcribe
             logger.info(f"Transcribed in {transcribe_duration:.2f}s")
@@ -191,7 +194,6 @@ class TranscribeService:
             logger.error(f"Transcription failed: {e}")
             raise
         finally:
-            # Cleanup temp file
             if temp_file_path.exists():
                 try:
                     os.remove(temp_file_path)

@@ -132,9 +132,12 @@ class AsyncTranscriptionService:
 
         try:
             # Perform transcription using TranscribeService
+            # use_timeout=False: Background jobs should not timeout
+            # Client polls for status, no need for timeout protection
             result = await self.transcribe_service.transcribe_from_url(
                 audio_url=media_url,
                 language=language or "vi",
+                use_timeout=False,  # No timeout for async background jobs
             )
 
             processing_time = time.time() - start_time
